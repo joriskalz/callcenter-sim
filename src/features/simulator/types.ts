@@ -12,7 +12,9 @@ export type ReachabilityStatus = (typeof reachabilityStatuses)[number]
 export type CallState =
   | "incoming"
   | "answering"
+  | "busy"
   | "connected"
+  | "disabled"
   | "playing"
   | "waiting_after_play"
   | "hanging_up"

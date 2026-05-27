@@ -17,6 +17,7 @@ import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
 import { Route as ApiContactsRouteImport } from './routes/api/contacts'
 import { Route as ApiCallbacksRouteImport } from './routes/api/callbacks'
+import { Route as ApiMediaVoicemailToneWavRouteImport } from './routes/api/media/voicemail-tone.wav'
 import { Route as ApiContactsContactIdSimulatorStatusRouteImport } from './routes/api/contacts/$contactId/simulator-status'
 
 const MonitorRoute = MonitorRouteImport.update({
@@ -59,6 +60,12 @@ const ApiCallbacksRoute = ApiCallbacksRouteImport.update({
   path: '/api/callbacks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMediaVoicemailToneWavRoute =
+  ApiMediaVoicemailToneWavRouteImport.update({
+    id: '/api/media/voicemail-tone/wav',
+    path: '/api/media/voicemail-tone/wav',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiContactsContactIdSimulatorStatusRoute =
   ApiContactsContactIdSimulatorStatusRouteImport.update({
     id: '/$contactId/simulator-status',
@@ -76,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
+  '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -87,6 +95,7 @@ export interface FileRoutesByTo {
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
+  '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,6 +108,7 @@ export interface FileRoutesById {
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
+  '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/status'
     | '/api/contacts/$contactId/simulator-status'
+    | '/api/media/voicemail-tone/wav'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -123,6 +134,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/status'
     | '/api/contacts/$contactId/simulator-status'
+    | '/api/media/voicemail-tone/wav'
   id:
     | '__root__'
     | '/'
@@ -134,6 +146,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/status'
     | '/api/contacts/$contactId/simulator-status'
+    | '/api/media/voicemail-tone/wav'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -145,6 +158,7 @@ export interface RootRouteChildren {
   ApiIncomingCallRoute: typeof ApiIncomingCallRoute
   ApiScenariosRoute: typeof ApiScenariosRoute
   ApiStatusRoute: typeof ApiStatusRoute
+  ApiMediaVoicemailToneWavRoute: typeof ApiMediaVoicemailToneWavRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -205,6 +219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCallbacksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/media/voicemail-tone/wav': {
+      id: '/api/media/voicemail-tone/wav'
+      path: '/api/media/voicemail-tone/wav'
+      fullPath: '/api/media/voicemail-tone/wav'
+      preLoaderRoute: typeof ApiMediaVoicemailToneWavRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/contacts/$contactId/simulator-status': {
       id: '/api/contacts/$contactId/simulator-status'
       path: '/$contactId/simulator-status'
@@ -237,6 +258,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIncomingCallRoute: ApiIncomingCallRoute,
   ApiScenariosRoute: ApiScenariosRoute,
   ApiStatusRoute: ApiStatusRoute,
+  ApiMediaVoicemailToneWavRoute: ApiMediaVoicemailToneWavRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

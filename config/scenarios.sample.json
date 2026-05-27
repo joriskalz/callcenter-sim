@@ -25,7 +25,7 @@
     "name": "voicemail",
     "answer": true,
     "answerDelaySeconds": 3,
-    "message": "Sie haben die Mailbox von Max Mustermann erreicht. Bitte hinterlassen Sie eine Nachricht.",
+    "message": "Sie haben die Voicemail erreicht. Bitte hinterlassen Sie eine Nachricht nach dem Ton.",
     "locale": "de-DE",
     "voiceName": "de-DE-KatjaNeural",
     "hangupAfterSeconds": 20

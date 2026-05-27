@@ -1,6 +1,6 @@
 import type { Scenario } from "@/features/simulator/types"
 
-import { getSettings } from "./config.server"
+import { getSettings, voicemailToneUrl } from "./config.server"
 import { callEvent, simulatorState } from "./state.server"
 
 let clientCache: unknown | null = null
@@ -38,6 +38,31 @@ export async function answerCall(
   return result.callConnectionProperties.callConnectionId ?? null
 }
 
+export async function rejectIncomingCall(
+  incomingCallContext: string,
+  callRejectReason: "busy" | "forbidden" | "none",
+  operationContext: string
+): Promise<void> {
+  const client = await getClient()
+  if (!client) {
+    simulatorState.addEvent(
+      callEvent({
+        event_type: "Simulator.RejectSkipped",
+        message: "ACS is not configured; rejectCall was skipped.",
+        server_call_id: null,
+        call_connection_id: null,
+        operation_context: operationContext,
+        scenario_name: null,
+        to_number: null,
+        error: null,
+      })
+    )
+    return
+  }
+
+  await client.rejectCall(incomingCallContext, { callRejectReason })
+}
+
 export async function playText(
   callConnectionId: string,
   scenario: Scenario,
@@ -62,17 +87,9 @@ export async function playText(
 
   const settings = getSettings()
   const media = client.getCallConnection(callConnectionId).getCallMedia()
-  await media.playToAll(
-    [
-      {
-        kind: "textSource",
-        text: scenario.message ?? "",
-        sourceLocale: scenario.locale,
-        voiceName: scenario.voiceName ?? settings.defaultVoiceName,
-      },
-    ],
-    { operationContext }
-  )
+  await media.playToAll([playSourceForScenario(scenario, settings)], {
+    operationContext,
+  })
 }
 
 export async function hangUp(callConnectionId: string): Promise<void> {
@@ -116,18 +133,69 @@ type AcsClient = {
       callIntelligenceOptions?: { cognitiveServicesEndpoint: string }
     }
   ) => Promise<{ callConnectionProperties: { callConnectionId?: string } }>
+  rejectCall: (
+    incomingCallContext: string,
+    options: { callRejectReason: "busy" | "forbidden" | "none" }
+  ) => Promise<void>
   getCallConnection: (callConnectionId: string) => {
     getCallMedia: () => {
       playToAll: (
-        sources: Array<{
-          kind: "textSource"
-          text: string
-          sourceLocale: string
-          voiceName: string
-        }>,
+        sources: PlaySource[],
         options: { operationContext: string }
       ) => Promise<void>
     }
     hangUp: (isForEveryone: boolean) => Promise<void>
   }
+}
+
+type PlaySource =
+  | {
+      kind: "textSource"
+      text: string
+      sourceLocale: string
+      voiceName: string
+    }
+  | {
+      kind: "ssmlSource"
+      ssmlText: string
+    }
+
+function playSourceForScenario(
+  scenario: Scenario,
+  settings: ReturnType<typeof getSettings>
+): PlaySource {
+  if (scenario.name === "voicemail") {
+    const locale = scenario.locale || settings.defaultLocale
+    const voiceName = scenario.voiceName ?? settings.defaultVoiceName
+    return {
+      kind: "ssmlSource",
+      ssmlText:
+        `<speak version="1.0" xml:lang="${escapeXmlAttribute(locale)}">` +
+        `<voice name="${escapeXmlAttribute(voiceName)}">` +
+        `${escapeXmlText(scenario.message ?? "")}` +
+        `<break time="500ms"/>` +
+        `<audio src="${escapeXmlAttribute(voicemailToneUrl(settings))}"/>` +
+        `</voice></speak>`,
+    }
+  }
+
+  return {
+    kind: "textSource",
+    text: scenario.message ?? "",
+    sourceLocale: scenario.locale,
+    voiceName: scenario.voiceName ?? settings.defaultVoiceName,
+  }
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+}
+
+function escapeXmlAttribute(value: string): string {
+  return escapeXmlText(value)
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
 }

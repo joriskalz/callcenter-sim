@@ -23,7 +23,7 @@ import {
   useMonitorStatusQuery,
 } from "../queries"
 import { reachabilityStatuses } from "../types"
-import type { ReachabilityStatus } from "../types"
+import type { ReachabilityStatus, Scenario } from "../types"
 import { ActiveCallsTable } from "./active-calls-table"
 import { ContactsTable } from "./contacts-table"
 import { EventStream } from "./event-stream"
@@ -58,6 +58,10 @@ export function MonitorShell() {
   }
 
   const error = statusQuery.error ?? contactsQuery.error ?? scenariosQuery.error
+  const scenarioOptions = React.useMemo(
+    () => scenarioOptionsFromMap(scenariosQuery.data ?? {}),
+    [scenariosQuery.data]
+  )
 
   return (
     <main className="min-h-svh bg-background">
@@ -154,6 +158,7 @@ export function MonitorShell() {
         />
         <ContactsTable
           contacts={contactsQuery.data ?? []}
+          scenarioOptions={scenarioOptions}
           statusFilter={statusFilter}
           search={search}
           apiKey={apiKey}
@@ -164,4 +169,12 @@ export function MonitorShell() {
       </div>
     </main>
   )
+}
+
+function scenarioOptionsFromMap(scenarios: Record<string, Scenario>) {
+  return Array.from(
+    new Map(
+      Object.values(scenarios).map((scenario) => [scenario.name, scenario])
+    ).values()
+  ).sort((first, second) => first.name.localeCompare(second.name))
 }

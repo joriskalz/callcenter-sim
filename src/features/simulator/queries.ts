@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useServerFn } from "@tanstack/react-start"
 
-import {
-  getMonitorContacts,
-  getMonitorScenarios,
-  getMonitorStatus,
-  patchMonitorContactStatus,
-} from "./functions"
-import type { ContactStatusPatch } from "./types"
+import type {
+  AppStatus,
+  Contact,
+  ContactStatusPatch,
+  PatchStatusResult,
+  Scenario,
+} from "./types"
 
 const simulatorKeys = {
   all: ["simulator"] as const,
@@ -19,45 +18,43 @@ const simulatorKeys = {
 }
 
 export function useMonitorStatusQuery(apiKey: string, autoRefresh: boolean) {
-  const getStatus = useServerFn(getMonitorStatus)
   return useQuery({
     queryKey: simulatorKeys.status(apiKey),
-    queryFn: () => getStatus({ data: { apiKey } }),
+    queryFn: () => fetchMonitorJson<AppStatus>("/api/status", apiKey),
     refetchInterval: autoRefresh ? 3000 : false,
   })
 }
 
 export function useMonitorContactsQuery(apiKey: string, autoRefresh: boolean) {
-  const getContacts = useServerFn(getMonitorContacts)
   return useQuery({
     queryKey: simulatorKeys.contacts(apiKey),
-    queryFn: () => getContacts({ data: { apiKey } }),
+    queryFn: () => fetchMonitorJson<Contact[]>("/api/contacts", apiKey),
     refetchInterval: autoRefresh ? 3000 : false,
   })
 }
 
 export function useMonitorScenariosQuery(apiKey: string) {
-  const getScenarios = useServerFn(getMonitorScenarios)
   return useQuery({
     queryKey: simulatorKeys.scenarios(apiKey),
-    queryFn: () => getScenarios({ data: { apiKey } }),
+    queryFn: () =>
+      fetchMonitorJson<Record<string, Scenario>>("/api/scenarios", apiKey),
     staleTime: 60_000,
   })
 }
 
 export function usePatchContactStatusMutation(apiKey: string) {
   const queryClient = useQueryClient()
-  const patchContact = useServerFn(patchMonitorContactStatus)
 
   return useMutation({
     mutationFn: (input: { contactId: string; patch: ContactStatusPatch }) =>
-      patchContact({
-        data: {
-          apiKey,
-          contactId: input.contactId,
-          patch: input.patch,
-        },
-      }),
+      fetchMonitorJson<PatchStatusResult>(
+        `/api/contacts/${encodeURIComponent(input.contactId)}/simulator-status`,
+        apiKey,
+        {
+          method: "PATCH",
+          body: JSON.stringify(input.patch),
+        }
+      ),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -69,4 +66,35 @@ export function usePatchContactStatusMutation(apiKey: string) {
       ])
     },
   })
+}
+
+async function fetchMonitorJson<T>(
+  path: string,
+  apiKey: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { "x-monitor-api-key": apiKey } : {}),
+      ...init.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const message = await errorMessage(response)
+    throw new Error(message)
+  }
+
+  return (await response.json()) as T
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { detail?: string }
+    return payload.detail || `${response.status} ${response.statusText}`
+  } catch {
+    return `${response.status} ${response.statusText}`
+  }
 }

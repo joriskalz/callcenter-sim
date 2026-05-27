@@ -8,7 +8,11 @@ import type {
   ReachabilityStatus,
 } from "@/features/simulator/types"
 
-import { dataverseConfigured, getSettings } from "./config.server"
+import {
+  dataverseConfigured,
+  getSettings,
+  normalizePhone,
+} from "./config.server"
 import type { Settings } from "./config.server"
 
 type TokenCache = {
@@ -43,6 +47,20 @@ export async function listContacts(): Promise<Contact[]> {
   )
   return (response.value ?? []).map((item) =>
     contactFromDataverse(item, settings)
+  )
+}
+
+export async function contactByPhoneNumber(
+  phoneNumber: string | null | undefined
+): Promise<Contact | null> {
+  const normalizedPhone = normalizePhone(phoneNumber)
+  if (!normalizedPhone) return null
+
+  const contacts = await listContacts()
+  return (
+    contacts.find(
+      (contact) => normalizePhone(contact.telephone1) === normalizedPhone
+    ) ?? null
   )
 }
 

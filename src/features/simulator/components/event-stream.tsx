@@ -10,11 +10,12 @@ export function EventStream({ events }: { events: CallEvent[] }) {
           events.slice(0, 40).map((event, index) => (
             <div
               key={`${event.occurred_at}-${event.event_type}-${index}`}
-              className="grid gap-2 px-4 py-3 md:grid-cols-[220px_minmax(0,1fr)_220px]"
+              className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_max-content] md:items-center"
             >
-              <div>
+              <div className="min-w-0">
                 <StatusBadge
                   value={event.error ? "failed" : event.event_type}
+                  className="max-w-full justify-start truncate normal-case"
                 />
               </div>
               <div className="min-w-0">
@@ -25,7 +26,7 @@ export function EventStream({ events }: { events: CallEvent[] }) {
                     .join(" ")}
                 </div>
               </div>
-              <div className="text-sm text-muted-foreground md:text-right">
+              <div className="text-sm whitespace-nowrap text-muted-foreground md:text-right">
                 {formatDate(event.occurred_at)}
               </div>
             </div>

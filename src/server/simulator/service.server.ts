@@ -6,10 +6,11 @@ import type {
   CallEvent,
   ContactStatusPatch,
   PatchStatusResult,
+  ReachabilityStatus,
   Scenario,
 } from "@/features/simulator/types"
 
-import { answerCall, hangUp, playText } from "./acs.server"
+import { answerCall, hangUp, playText, rejectIncomingCall } from "./acs.server"
 import {
   acsConfigured,
   callbackUrl,
@@ -17,7 +18,11 @@ import {
   dataverseConfigured,
   getSettings,
 } from "./config.server"
-import { listContacts, patchContactStatus } from "./dataverse.server"
+import {
+  contactByPhoneNumber,
+  listContacts,
+  patchContactStatus,
+} from "./dataverse.server"
 import {
   asEventList,
   eventData,
@@ -119,7 +124,7 @@ export async function handleIncomingCallPayload(
     if (event.id && simulatorState.rememberEventId(String(event.id))) continue
     if (eventType(event) !== "Microsoft.Communication.IncomingCall") continue
     accepted += 1
-    handleIncomingCallEvent(eventData(event))
+    await handleIncomingCallEvent(eventData(event))
   }
 
   return Response.json({ accepted }, { status: 202 })
@@ -140,7 +145,9 @@ export async function handleCallbackPayload(
   return Response.json({ handled }, { status: 202 })
 }
 
-function handleIncomingCallEvent(data: Record<string, unknown>): void {
+async function handleIncomingCallEvent(
+  data: Record<string, unknown>
+): Promise<void> {
   const incomingCallContext =
     typeof data.incomingCallContext === "string"
       ? data.incomingCallContext
@@ -149,7 +156,13 @@ function handleIncomingCallEvent(data: Record<string, unknown>): void {
     typeof data.serverCallId === "string" ? data.serverCallId : null
   const fromNumber = extractPhone(data.from)
   const toNumber = extractPhone(data.to)
-  const scenario = scenarioByTargetNumber(toNumber)
+  const contact = await contactByPhoneNumber(toNumber)
+  const reachabilityStatus = contact?.new_ccsim_reachabilitystatus ?? "unknown"
+  const scenario = scenarioForIncomingCall(
+    reachabilityStatus,
+    contact?.new_ccsim_scenario,
+    toNumber
+  )
   const operationContext = `ccsim:${scenario.name}:${randomUUID()}`
 
   const call: ActiveCall = {
@@ -186,17 +199,30 @@ function handleIncomingCallEvent(data: Record<string, unknown>): void {
     })
   )
 
+  if (reachabilityStatus === "busy") {
+    rejectCallByStatus(incomingCallContext, call, "busy")
+    return
+  }
+
+  if (reachabilityStatus === "disabled") {
+    rejectCallByStatus(incomingCallContext, call, "disabled")
+    return
+  }
+
+  if (reachabilityStatus === "no_answer") {
+    leaveCallUnanswered(
+      call,
+      "Status.NoAnswer",
+      "Contact status is configured not to answer this call."
+    )
+    return
+  }
+
   if (!scenario.answer) {
-    call.state = "no_answer"
-    call.result = "no_answer"
-    call.current_action = "left unanswered by scenario"
-    simulatorState.upsertCall(call)
-    simulatorState.addEvent(
-      eventFromCall(
-        "Scenario.NoAnswer",
-        "Scenario is configured not to answer this call.",
-        call
-      )
+    leaveCallUnanswered(
+      call,
+      "Scenario.NoAnswer",
+      "Scenario is configured not to answer this call."
     )
     return
   }
@@ -220,6 +246,92 @@ function handleIncomingCallEvent(data: Record<string, unknown>): void {
   call.current_action = "answer scheduled"
   simulatorState.upsertCall(call)
   void answerAfterDelay(incomingCallContext, scenario, operationContext)
+}
+
+function scenarioForIncomingCall(
+  reachabilityStatus: ReachabilityStatus,
+  selectedScenario: string | null | undefined,
+  toNumber: string | null
+): Scenario {
+  if (reachabilityStatus === "voicemail") {
+    return scenarioForNameOrNumber("voicemail", toNumber)
+  }
+  return selectedScenario
+    ? scenarioForNameOrNumber(selectedScenario, toNumber)
+    : scenarioByTargetNumber(toNumber)
+}
+
+function rejectCallByStatus(
+  incomingCallContext: string | null,
+  call: ActiveCall,
+  status: "busy" | "disabled"
+): void {
+  if (!incomingCallContext) {
+    call.state = "failed"
+    call.error = "IncomingCall event did not include incomingCallContext."
+    simulatorState.upsertCall(call)
+    simulatorState.addEvent(
+      eventFromCall(
+        "IncomingCall.Error",
+        `IncomingCall cannot be rejected as ${status} without incomingCallContext.`,
+        call,
+        call.error
+      )
+    )
+    return
+  }
+
+  call.state = status
+  call.result = status
+  call.current_action =
+    status === "busy" ? "rejectCall busy" : "rejectCall forbidden"
+  simulatorState.upsertCall(call)
+  void rejectCallWithReason(
+    incomingCallContext,
+    status === "busy" ? "busy" : "forbidden",
+    call.operation_context
+  )
+}
+
+function leaveCallUnanswered(
+  call: ActiveCall,
+  eventTypeValue: string,
+  message: string
+): void {
+  call.state = "no_answer"
+  call.result = "no_answer"
+  call.current_action = "left unanswered"
+  simulatorState.upsertCall(call)
+  simulatorState.addEvent(eventFromCall(eventTypeValue, message, call))
+}
+
+async function rejectCallWithReason(
+  incomingCallContext: string,
+  reason: "busy" | "forbidden",
+  operationContext: string
+): Promise<void> {
+  const call = simulatorState.findCall({ operationContext })
+  if (!call) return
+
+  try {
+    await rejectIncomingCall(incomingCallContext, reason, operationContext)
+    simulatorState.addEvent(
+      eventFromCall(
+        reason === "busy" ? "Reject.Busy" : "Reject.Forbidden",
+        reason === "busy"
+          ? "rejectCall was invoked with Busy."
+          : "rejectCall was invoked with Forbidden.",
+        call
+      )
+    )
+  } catch (error) {
+    call.state = "failed"
+    call.error = errorMessage(error)
+    simulatorState.upsertCall(call)
+    simulatorState.addEvent(
+      eventFromCall("Reject.Error", "rejectCall failed.", call, call.error)
+    )
+  }
 }
 
 async function answerAfterDelay(
@@ -419,9 +531,24 @@ function eventFromCall(
 
 function callbackError(data: Record<string, unknown>): string | null {
   if (!isRecord(data.resultInformation)) return null
-  const code = data.resultInformation.code
-  if (!code) return null
-  return `${code}: ${String(data.resultInformation.message ?? "")}`.trim()
+  const code = numericResultCode(data.resultInformation.code)
+  const subCode = numericResultCode(data.resultInformation.subCode)
+  const message = String(data.resultInformation.message ?? "").trim()
+
+  if (code === null) return null
+  if ((code === 0 || (code >= 200 && code < 400)) && (subCode ?? 0) === 0) {
+    return null
+  }
+
+  return [String(code), message].filter(Boolean).join(": ")
+}
+
+function numericResultCode(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value !== "string" || !value.trim()) return null
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function delay(seconds: number): Promise<void> {

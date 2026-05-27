@@ -5,17 +5,22 @@ import type { CallState, ReachabilityStatus } from "../types"
 
 export function StatusBadge({
   value,
+  className,
 }: {
   value: CallState | ReachabilityStatus | string
+  className?: string
 }) {
   return (
-    <Badge variant="outline" className={cn("capitalize", toneClass(value))}>
+    <Badge
+      variant="outline"
+      className={cn("capitalize", statusToneClass(value), className)}
+    >
       {value}
     </Badge>
   )
 }
 
-function toneClass(value: string): string {
+export function statusToneClass(value: string): string {
   if (["connected", "playing", "reachable"].includes(value)) {
     return "border-success/35 bg-success/10 text-success"
   }

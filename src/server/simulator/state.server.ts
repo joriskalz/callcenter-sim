@@ -74,7 +74,10 @@ class SimulatorState {
 
   activeCalls(): ActiveCall[] {
     return Array.from(this.callsByOperation.values()).filter(
-      (call) => !["disconnected", "failed", "no_answer"].includes(call.state)
+      (call) =>
+        !["busy", "disabled", "disconnected", "failed", "no_answer"].includes(
+          call.state
+        )
     )
   }
 

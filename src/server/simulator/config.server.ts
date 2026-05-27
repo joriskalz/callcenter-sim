@@ -51,11 +51,17 @@ export function getSettings(): Settings {
 }
 
 export function callbackUrl(settings = getSettings()): string {
+  return publicUrl(settings.callbackPath, settings)
+}
+
+export function publicUrl(path: string, settings = getSettings()): string {
   const baseUrl = settings.publicBaseUrl.replace(/\/+$/, "")
-  const callbackPath = settings.callbackPath.startsWith("/")
-    ? settings.callbackPath
-    : `/${settings.callbackPath}`
-  return `${baseUrl}${callbackPath}`
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+  return `${baseUrl}${normalizedPath}`
+}
+
+export function voicemailToneUrl(settings = getSettings()): string {
+  return publicUrl("/api/media/voicemail-tone/wav", settings)
 }
 
 export function acsConfigured(settings = getSettings()): boolean {
@@ -164,7 +170,7 @@ function defaultScenarios(settings: Settings): Record<string, Scenario> {
       answer: true,
       answerDelaySeconds: 3,
       message:
-        "Sie haben die Mailbox von Max Mustermann erreicht. Bitte hinterlassen Sie eine Nachricht.",
+        "Sie haben die Voicemail erreicht. Bitte hinterlassen Sie eine Nachricht nach dem Ton.",
       locale: "de-DE",
       voiceName: "de-DE-KatjaNeural",
       hangupAfterSeconds: 20,
