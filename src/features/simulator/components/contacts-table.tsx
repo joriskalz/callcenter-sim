@@ -7,6 +7,7 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -20,6 +21,7 @@ import {
 
 import { usePatchContactStatusMutation } from "../queries"
 import type { Contact, ContactStatusPatch, ReachabilityStatus } from "../types"
+import { ConsentPopover } from "./consent-popover"
 import { ReachabilityStatusPopover } from "./reachability-status-popover"
 import { ScenarioPopover } from "./scenario-popover"
 import type { ScenarioOption } from "./scenario-popover"
@@ -84,6 +86,7 @@ export function ContactsTable({
                 </Button>
               </div>
             </TableHead>
+            <TableHead>Consent</TableHead>
             <TableHead>Enabled</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Scenario</TableHead>
@@ -94,7 +97,7 @@ export function ContactsTable({
         <TableBody>
           {isLoading && !contacts.length ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-muted-foreground">
+              <TableCell colSpan={8} className="text-muted-foreground">
                 Loading contacts
               </TableCell>
             </TableRow>
@@ -110,7 +113,7 @@ export function ContactsTable({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={7} className="text-muted-foreground">
+              <TableCell colSpan={8} className="text-muted-foreground">
                 No contacts match the current filters
               </TableCell>
             </TableRow>
@@ -174,10 +177,19 @@ function ContactRow({
   return (
     <TableRow>
       <TableCell className="font-medium">{contact.fullname}</TableCell>
-      <TableCell className="font-mono text-sm">
-        {showPhoneNumber
-          ? contact.telephone1
-          : maskPhoneNumber(contact.telephone1)}
+      <TableCell>
+        <PhoneNumberCopy
+          phoneNumber={contact.telephone1}
+          showPhoneNumber={showPhoneNumber}
+        />
+      </TableCell>
+      <TableCell>
+        <ConsentPopover
+          contactId={contact.contactid}
+          phoneNumber={contact.telephone1}
+          consent={contact.consent}
+          apiKey={apiKey}
+        />
       </TableCell>
       <TableCell>
         <Switch
@@ -250,6 +262,58 @@ function AutosaveState({
   return <span className="text-xs text-muted-foreground">Auto-save</span>
 }
 
+function PhoneNumberCopy({
+  phoneNumber,
+  showPhoneNumber,
+}: {
+  phoneNumber: string | null
+  showPhoneNumber: boolean
+}) {
+  const [copied, setCopied] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!copied) return
+
+    const timeout = window.setTimeout(() => setCopied(false), 2000)
+    return () => window.clearTimeout(timeout)
+  }, [copied])
+
+  if (!phoneNumber) return null
+
+  const displayValue = showPhoneNumber
+    ? phoneNumber
+    : maskPhoneNumber(phoneNumber)
+
+  const copyPhoneNumber = async () => {
+    await copyText(phoneNumber)
+    setCopied(true)
+  }
+
+  if (copied) {
+    return (
+      <Badge
+        variant="outline"
+        className="border-success/35 bg-success/10 font-mono text-success"
+      >
+        <CheckIcon className="size-3" />
+        Copied
+      </Badge>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="rounded-sm font-mono text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      title="Copy phone number"
+      aria-label={`Copy phone number ${phoneNumber}`}
+      onClick={() => void copyPhoneNumber()}
+    >
+      {displayValue}
+    </button>
+  )
+}
+
 function maskPhoneNumber(phoneNumber: string | null): string {
   if (!phoneNumber) return ""
   if (phoneNumber.length <= 5) return phoneNumber
@@ -263,4 +327,27 @@ function scenarioValue(
   scenarioOptions: ScenarioOption[]
 ) {
   return current || scenarioOptions.at(0)?.name || ""
+}
+
+async function copyText(value: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value)
+    return
+  } catch {
+    // Fall back for browsers or contexts where the async clipboard API is blocked.
+  }
+
+  const textArea = document.createElement("textarea")
+  textArea.value = value
+  textArea.setAttribute("readonly", "")
+  textArea.style.position = "fixed"
+  textArea.style.opacity = "0"
+  document.body.append(textArea)
+  textArea.select()
+
+  try {
+    document.execCommand("copy")
+  } finally {
+    textArea.remove()
+  }
 }

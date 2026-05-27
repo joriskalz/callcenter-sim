@@ -41,12 +41,33 @@ export type Contact = {
   new_ccsim_scenario: string | null
   new_ccsim_lastcallresult: string | null
   new_ccsim_lastcallat: string | null
+  consent: ContactConsent | null
 }
 
 export type ContactStatusPatch = {
   new_ccsim_enabled?: boolean | null
   new_ccsim_reachabilitystatus?: ReachabilityStatus | null
   new_ccsim_scenario?: string | null
+}
+
+export type ConsentValue = "not_set" | "opted_in" | "opted_out"
+
+export type ContactConsent = {
+  id: string | null
+  contactPointValue: string
+  value: ConsentValue | "unknown"
+  source: number | null
+  reason: string | null
+  modifiedOn: string | null
+}
+
+export type ContactConsentPatch = {
+  value: Extract<ConsentValue, "opted_in" | "opted_out">
+}
+
+export type ContactConsentResult = {
+  contactid: string
+  consent: ContactConsent | null
 }
 
 export type ActiveCall = {

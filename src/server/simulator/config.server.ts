@@ -25,6 +25,10 @@ export type Settings = {
   dataverseClientId: string | null
   dataverseClientSecret: string | null
   dataverseContactFieldPrefix: string
+  dataverseConsentPurposeId: string | null
+  dataverseConsentPurposeName: string | null
+  dataverseConsentReason: string
+  dataverseConsentSource: number
 }
 
 export function getSettings(): Settings {
@@ -47,6 +51,17 @@ export function getSettings(): Settings {
     dataverseClientId: valueOrNull(env("DATAVERSE_CLIENT_ID")),
     dataverseClientSecret: valueOrNull(env("DATAVERSE_CLIENT_SECRET")),
     dataverseContactFieldPrefix: env("DATAVERSE_CONTACT_FIELD_PREFIX") ?? "new",
+    dataverseConsentPurposeId: valueOrNull(env("DATAVERSE_CONSENT_PURPOSE_ID")),
+    dataverseConsentPurposeName: valueOrNull(
+      env("DATAVERSE_CONSENT_PURPOSE_NAME")
+    ),
+    dataverseConsentReason:
+      env("DATAVERSE_CONSENT_REASON") ??
+      "Managed from call center simulator monitor",
+    dataverseConsentSource: numberFromEnv(
+      env("DATAVERSE_CONSENT_SOURCE"),
+      534120000
+    ),
   }
 }
 

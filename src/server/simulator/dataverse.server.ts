@@ -3,7 +3,11 @@ import { resolve } from "node:path"
 
 import type {
   Contact,
+  ContactConsent,
+  ContactConsentPatch,
+  ContactConsentResult,
   ContactStatusPatch,
+  ConsentValue,
   PatchStatusResult,
   ReachabilityStatus,
 } from "@/features/simulator/types"
@@ -21,6 +25,21 @@ type TokenCache = {
 }
 
 let tokenCache: TokenCache | null = null
+let purposeNavigationPropertyCache: string | null = null
+let consentPurposeCache: { key: string; id: string } | null = null
+
+const consentEntitySet = "msdynmkt_contactpointconsent4s"
+const voiceContactPointType = 534120003
+const purposeConsentType = 534120000
+const commercialPurposeType = 534120000
+const consentValues: Record<ConsentValue, number> = {
+  not_set: 534120000,
+  opted_in: 534120001,
+  opted_out: 534120002,
+}
+const consentValuesByCode = Object.fromEntries(
+  Object.entries(consentValues).map(([key, value]) => [value, key])
+) as Record<number, ConsentValue>
 
 export async function listContacts(): Promise<Contact[]> {
   const settings = getSettings()
@@ -45,9 +64,10 @@ export async function listContacts(): Promise<Contact[]> {
     "GET",
     `/api/data/v9.2/contacts?$select=${select}&$filter=${encodeURIComponent(filter)}`
   )
-  return (response.value ?? []).map((item) =>
+  const contacts = (response.value ?? []).map((item) =>
     contactFromDataverse(item, settings)
   )
+  return contactsWithConsent(contacts, settings)
 }
 
 export async function contactByPhoneNumber(
@@ -95,6 +115,79 @@ export async function patchContactStatus(
   return { contactid: contactId, updated: payload }
 }
 
+export async function setContactConsent(
+  contactId: string,
+  patch: ContactConsentPatch
+): Promise<ContactConsentResult> {
+  const settings = getSettings()
+  const contact = await contactById(contactId)
+  if (!contact?.telephone1) {
+    throw new Error("Contact does not have a business phone number.")
+  }
+
+  if (!dataverseConfigured(settings)) {
+    return {
+      contactid: contactId,
+      consent: {
+        id: null,
+        contactPointValue: contact.telephone1,
+        value: patch.value,
+        source: settings.dataverseConsentSource,
+        reason: settings.dataverseConsentReason,
+        modifiedOn: null,
+      },
+    }
+  }
+
+  const existing = await consentByPhoneNumber(contact.telephone1, settings)
+  if (existing?.id) {
+    await requestDataverse(
+      "PATCH",
+      `/api/data/v9.2/${consentEntitySet}(${existing.id})`,
+      consentPayload(patch.value, settings)
+    )
+  } else {
+    const consentPurposeId = await resolveConsentPurposeId(settings)
+
+    await requestDataverse("POST", `/api/data/v9.2/${consentEntitySet}`, {
+      msdynmkt_contactpointvalue: normalizePhone(contact.telephone1),
+      msdynmkt_contactpointtype: voiceContactPointType,
+      msdynmkt_contactpointconsenttype: purposeConsentType,
+      ...consentPayload(patch.value, settings),
+      [`${await purposeNavigationProperty()}@odata.bind`]: `/msdynmkt_purposes(${cleanGuid(consentPurposeId)})`,
+    })
+  }
+
+  return {
+    contactid: contactId,
+    consent: await consentByPhoneNumber(contact.telephone1, settings),
+  }
+}
+
+export async function removeContactConsent(
+  contactId: string
+): Promise<ContactConsentResult> {
+  const settings = getSettings()
+  const contact = await contactById(contactId)
+  if (!contact?.telephone1) {
+    throw new Error("Contact does not have a business phone number.")
+  }
+
+  if (!dataverseConfigured(settings)) {
+    return { contactid: contactId, consent: null }
+  }
+
+  const existing = await consentByPhoneNumber(contact.telephone1, settings)
+  if (existing?.id) {
+    await requestDataverse(
+      "DELETE",
+      `/api/data/v9.2/${consentEntitySet}(${existing.id})`
+    )
+  }
+
+  return { contactid: contactId, consent: null }
+}
+
 async function requestDataverse<T>(
   method: string,
   path: string,
@@ -123,6 +216,201 @@ async function requestDataverse<T>(
   }
   if (response.status === 204) return {} as T
   return (await response.json()) as T
+}
+
+async function contactById(contactId: string): Promise<Contact | null> {
+  const contacts = await listContacts()
+  return contacts.find((contact) => contact.contactid === contactId) ?? null
+}
+
+async function contactsWithConsent(
+  contacts: Contact[],
+  settings: Settings
+): Promise<Contact[]> {
+  const consentByPhone = await consentsByPhoneNumber(
+    contacts.map((contact) => contact.telephone1).filter(Boolean) as string[],
+    settings
+  )
+
+  return contacts.map((contact) => ({
+    ...contact,
+    consent: contact.telephone1
+      ? (consentByPhone.get(normalizePhone(contact.telephone1)) ?? null)
+      : null,
+  }))
+}
+
+async function consentsByPhoneNumber(
+  phoneNumbers: string[],
+  settings: Settings
+): Promise<Map<string, ContactConsent>> {
+  const normalizedPhones = Array.from(
+    new Set(phoneNumbers.map(normalizePhone).filter(Boolean))
+  )
+  const consents = new Map<string, ContactConsent>()
+  if (!normalizedPhones.length) return consents
+
+  const valuesFilter = normalizedPhones
+    .map((phone) => `msdynmkt_contactpointvalue eq '${odataString(phone)}'`)
+    .join(" or ")
+  const consentPurposeId = shouldScopeConsentPurpose(settings)
+    ? await resolveConsentPurposeId(settings)
+    : null
+  const purposeFilter = consentPurposeId
+    ? ` and _msdynmkt_purposeid_value eq ${cleanGuid(consentPurposeId)}`
+    : ""
+  const filter =
+    `msdynmkt_contactpointtype eq ${voiceContactPointType}` +
+    ` and msdynmkt_contactpointconsenttype eq ${purposeConsentType}` +
+    ` and (${valuesFilter})` +
+    purposeFilter
+  const select = [
+    "msdynmkt_contactpointconsent4id",
+    "msdynmkt_contactpointvalue",
+    "msdynmkt_value",
+    "msdynmkt_source",
+    "msdynmkt_reason",
+    "modifiedon",
+  ].join(",")
+
+  const response = await requestDataverse<{
+    value?: Array<Record<string, unknown>>
+  }>(
+    "GET",
+    `/api/data/v9.2/${consentEntitySet}?$select=${select}&$filter=${encodeURIComponent(
+      filter
+    )}&$orderby=modifiedon desc`
+  )
+
+  for (const item of response.value ?? []) {
+    const consent = consentFromDataverse(item)
+    const phone = normalizePhone(consent.contactPointValue)
+    if (phone && !consents.has(phone)) consents.set(phone, consent)
+  }
+
+  return consents
+}
+
+async function consentByPhoneNumber(
+  phoneNumber: string,
+  settings: Settings
+): Promise<ContactConsent | null> {
+  return (
+    (await consentsByPhoneNumber([phoneNumber], settings)).get(
+      normalizePhone(phoneNumber)
+    ) ?? null
+  )
+}
+
+async function resolveConsentPurposeId(settings: Settings): Promise<string> {
+  if (settings.dataverseConsentPurposeId) {
+    return cleanGuid(settings.dataverseConsentPurposeId)
+  }
+
+  const cacheKey = [
+    settings.dataverseUrl,
+    (settings.dataverseConsentPurposeName ?? "Commercial").toLowerCase(),
+  ].join("|")
+  if (consentPurposeCache?.key === cacheKey) return consentPurposeCache.id
+
+  const purposes = await listConsentPurposes()
+  const purpose = chooseConsentPurpose(
+    purposes,
+    settings.dataverseConsentPurposeName ?? "Commercial"
+  )
+  if (!purpose) {
+    throw new Error(
+      "No Dataverse consent purpose found. Create a Customer Insights - Journeys purpose or set DATAVERSE_CONSENT_PURPOSE_ID."
+    )
+  }
+
+  consentPurposeCache = { key: cacheKey, id: purpose.id }
+  return purpose.id
+}
+
+function shouldScopeConsentPurpose(settings: Settings): boolean {
+  return Boolean(
+    settings.dataverseConsentPurposeId || settings.dataverseConsentPurposeName
+  )
+}
+
+async function listConsentPurposes(): Promise<ConsentPurpose[]> {
+  const select = [
+    "msdynmkt_purposeid",
+    "msdynmkt_name",
+    "msdynmkt_type",
+    "msdynmkt_enforcementmodel",
+    "msdynmkt_smsenforcementmodel",
+    "msdynmkt_voiceenforcementmodel",
+  ].join(",")
+
+  const response = await requestDataverse<{
+    value?: Array<Record<string, unknown>>
+  }>("GET", `/api/data/v9.2/msdynmkt_purposes?$select=${select}`)
+
+  return (response.value ?? [])
+    .map(purposeFromDataverse)
+    .filter((purpose): purpose is ConsentPurpose => Boolean(purpose))
+}
+
+export type ConsentPurpose = {
+  id: string
+  name: string | null
+  type: number | null
+  enforcementModel: number | null
+  smsEnforcementModel: number | null
+  voiceEnforcementModel: number | null
+}
+
+export function chooseConsentPurpose(
+  purposes: ConsentPurpose[],
+  preferredName = "Commercial"
+): ConsentPurpose | null {
+  const preferredNameLower = preferredName.trim().toLowerCase()
+  const withVoice = purposes.filter(
+    (purpose) => purpose.voiceEnforcementModel != null
+  )
+  const candidates = withVoice.length ? withVoice : purposes
+  if (!candidates.length) return null
+
+  return (
+    candidates.find(
+      (purpose) => purpose.name?.trim().toLowerCase() === preferredNameLower
+    ) ??
+    candidates.find((purpose) => purpose.type === commercialPurposeType) ??
+    purposes.find(
+      (purpose) => purpose.name?.trim().toLowerCase() === preferredNameLower
+    ) ??
+    purposes.find((purpose) => purpose.type === commercialPurposeType) ??
+    candidates[0]
+  )
+}
+
+async function purposeNavigationProperty(): Promise<string> {
+  if (purposeNavigationPropertyCache) return purposeNavigationPropertyCache
+
+  try {
+    const response = await requestDataverse<{
+      value?: Array<Record<string, unknown>>
+    }>(
+      "GET",
+      "/api/data/v9.2/EntityDefinitions(LogicalName='msdynmkt_contactpointconsent4')/ManyToOneRelationships?$select=ReferencingAttribute,ReferencingEntityNavigationPropertyName&$filter=ReferencingAttribute eq 'msdynmkt_purposeid'"
+    )
+    const nav = response.value
+      ?.map((item) =>
+        stringOrNull(item.ReferencingEntityNavigationPropertyName)
+      )
+      .find(Boolean)
+    if (nav) {
+      purposeNavigationPropertyCache = nav
+      return nav
+    }
+  } catch {
+    // Fall back to the common generated navigation property name below.
+  }
+
+  purposeNavigationPropertyCache = "msdynmkt_PurposeId"
+  return purposeNavigationPropertyCache
 }
 
 async function token(): Promise<string> {
@@ -188,6 +476,7 @@ function normalizeContact(value: unknown): Contact {
     new_ccsim_scenario: stringOrNull(input.new_ccsim_scenario),
     new_ccsim_lastcallresult: stringOrNull(input.new_ccsim_lastcallresult),
     new_ccsim_lastcallat: stringOrNull(input.new_ccsim_lastcallat),
+    consent: normalizeConsent(input.consent),
   }
 }
 
@@ -209,6 +498,7 @@ function contactFromDataverse(
       item[`${prefix}_ccsim_lastcallresult`]
     ),
     new_ccsim_lastcallat: stringOrNull(item[`${prefix}_ccsim_lastcallat`]),
+    consent: null,
   }
 }
 
@@ -222,6 +512,60 @@ function fallbackContact(): Contact {
     new_ccsim_scenario: "instant-answer",
     new_ccsim_lastcallresult: null,
     new_ccsim_lastcallat: null,
+    consent: null,
+  }
+}
+
+function normalizeConsent(value: unknown): ContactConsent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const contactPointValue = stringOrNull(input.contactPointValue)
+  if (!contactPointValue) return null
+  return {
+    id: stringOrNull(input.id),
+    contactPointValue,
+    value: consentValueOrUnknown(input.value),
+    source: numberOrNull(input.source),
+    reason: stringOrNull(input.reason),
+    modifiedOn: stringOrNull(input.modifiedOn),
+  }
+}
+
+function consentFromDataverse(item: Record<string, unknown>): ContactConsent {
+  return {
+    id: stringOrNull(item.msdynmkt_contactpointconsent4id),
+    contactPointValue: String(item.msdynmkt_contactpointvalue ?? ""),
+    value: consentValueOrUnknown(item.msdynmkt_value),
+    source: numberOrNull(item.msdynmkt_source),
+    reason: stringOrNull(item.msdynmkt_reason),
+    modifiedOn: stringOrNull(item.modifiedon),
+  }
+}
+
+function purposeFromDataverse(
+  item: Record<string, unknown>
+): ConsentPurpose | null {
+  const id = stringOrNull(item.msdynmkt_purposeid)
+  if (!id) return null
+
+  return {
+    id: cleanGuid(id),
+    name: stringOrNull(item.msdynmkt_name),
+    type: numberOrNull(item.msdynmkt_type),
+    enforcementModel: numberOrNull(item.msdynmkt_enforcementmodel),
+    smsEnforcementModel: numberOrNull(item.msdynmkt_smsenforcementmodel),
+    voiceEnforcementModel: numberOrNull(item.msdynmkt_voiceenforcementmodel),
+  }
+}
+
+function consentPayload(
+  value: Extract<ConsentValue, "opted_in" | "opted_out">,
+  settings: Settings
+): Record<string, unknown> {
+  return {
+    msdynmkt_value: consentValues[value],
+    msdynmkt_source: settings.dataverseConsentSource,
+    msdynmkt_reason: settings.dataverseConsentReason,
   }
 }
 
@@ -257,4 +601,27 @@ function reachabilityOrUnknown(value: unknown): ReachabilityStatus {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function consentValueOrUnknown(value: unknown): ContactConsent["value"] {
+  if (typeof value === "string") {
+    if (["not_set", "opted_in", "opted_out"].includes(value)) {
+      return value as ConsentValue
+    }
+    return "unknown"
+  }
+  if (typeof value === "number") return consentValuesByCode[value] ?? "unknown"
+  return "unknown"
+}
+
+function cleanGuid(value: string): string {
+  return value.replace(/[{}]/g, "")
+}
+
+function odataString(value: string): string {
+  return value.replaceAll("'", "''")
 }

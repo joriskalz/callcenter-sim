@@ -5,6 +5,8 @@ import type {
   AppStatus,
   CallEvent,
   ContactStatusPatch,
+  ContactConsentPatch,
+  ContactConsentResult,
   PatchStatusResult,
   ReachabilityStatus,
   Scenario,
@@ -21,7 +23,9 @@ import {
 import {
   contactByPhoneNumber,
   listContacts,
+  removeContactConsent,
   patchContactStatus,
+  setContactConsent,
 } from "./dataverse.server"
 import {
   asEventList,
@@ -92,6 +96,19 @@ export async function patchStatus(
     throw new Error("At least one simulator status field is required.")
   }
   return patchContactStatus(contactId, patch)
+}
+
+export async function patchConsent(
+  contactId: string,
+  patch: ContactConsentPatch
+): Promise<ContactConsentResult> {
+  return setContactConsent(contactId, patch)
+}
+
+export async function removeConsent(
+  contactId: string
+): Promise<ContactConsentResult> {
+  return removeContactConsent(contactId)
 }
 
 export function scenarios(): Record<string, Scenario> {

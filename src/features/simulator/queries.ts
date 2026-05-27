@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AppStatus,
   Contact,
+  ContactConsentPatch,
+  ContactConsentResult,
   ContactStatusPatch,
   PatchStatusResult,
   Scenario,
@@ -64,6 +66,45 @@ export function usePatchContactStatusMutation(apiKey: string) {
           queryKey: simulatorKeys.contacts(apiKey),
         }),
       ])
+    },
+  })
+}
+
+export function usePatchContactConsentMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { contactId: string; patch: ContactConsentPatch }) =>
+      fetchMonitorJson<ContactConsentResult>(
+        `/api/contacts/${encodeURIComponent(input.contactId)}/consent`,
+        apiKey,
+        {
+          method: "PATCH",
+          body: JSON.stringify(input.patch),
+        }
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: simulatorKeys.contacts(apiKey),
+      })
+    },
+  })
+}
+
+export function useRemoveContactConsentMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { contactId: string }) =>
+      fetchMonitorJson<ContactConsentResult>(
+        `/api/contacts/${encodeURIComponent(input.contactId)}/consent`,
+        apiKey,
+        { method: "DELETE" }
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: simulatorKeys.contacts(apiKey),
+      })
     },
   })
 }
