@@ -1,0 +1,33 @@
+{
+  "+491234000001": {
+    "name": "instant-answer",
+    "answer": true,
+    "answerDelaySeconds": 0,
+    "message": "Hallo, ich nehme sofort ab.",
+    "locale": "de-DE",
+    "voiceName": "de-DE-KatjaNeural",
+    "hangupAfterSeconds": 10
+  },
+  "+491234000002": {
+    "name": "slow-answer",
+    "answer": true,
+    "answerDelaySeconds": 8,
+    "message": "Hallo, ich habe etwas spaeter abgenommen.",
+    "locale": "de-DE",
+    "voiceName": "de-DE-KatjaNeural",
+    "hangupAfterSeconds": 15
+  },
+  "+491234000003": {
+    "name": "no-answer",
+    "answer": false
+  },
+  "+491234000004": {
+    "name": "voicemail",
+    "answer": true,
+    "answerDelaySeconds": 3,
+    "message": "Sie haben die Mailbox von Max Mustermann erreicht. Bitte hinterlassen Sie eine Nachricht.",
+    "locale": "de-DE",
+    "voiceName": "de-DE-KatjaNeural",
+    "hangupAfterSeconds": 20
+  }
+}

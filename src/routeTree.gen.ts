@@ -8,59 +8,243 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root"
-import { Route as IndexRouteImport } from "./routes/index"
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as MonitorRouteImport } from './routes/monitor'
+import { Route as HealthRouteImport } from './routes/health'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiStatusRouteImport } from './routes/api/status'
+import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
+import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
+import { Route as ApiContactsRouteImport } from './routes/api/contacts'
+import { Route as ApiCallbacksRouteImport } from './routes/api/callbacks'
+import { Route as ApiContactsContactIdSimulatorStatusRouteImport } from './routes/api/contacts/$contactId/simulator-status'
 
-const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+const MonitorRoute = MonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatusRoute = ApiStatusRouteImport.update({
+  id: '/api/status',
+  path: '/api/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScenariosRoute = ApiScenariosRouteImport.update({
+  id: '/api/scenarios',
+  path: '/api/scenarios',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIncomingCallRoute = ApiIncomingCallRouteImport.update({
+  id: '/api/incomingCall',
+  path: '/api/incomingCall',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiContactsRoute = ApiContactsRouteImport.update({
+  id: '/api/contacts',
+  path: '/api/contacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCallbacksRoute = ApiCallbacksRouteImport.update({
+  id: '/api/callbacks',
+  path: '/api/callbacks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiContactsContactIdSimulatorStatusRoute =
+  ApiContactsContactIdSimulatorStatusRouteImport.update({
+    id: '/$contactId/simulator-status',
+    path: '/$contactId/simulator-status',
+    getParentRoute: () => ApiContactsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/monitor': typeof MonitorRoute
+  '/api/callbacks': typeof ApiCallbacksRoute
+  '/api/contacts': typeof ApiContactsRouteWithChildren
+  '/api/incomingCall': typeof ApiIncomingCallRoute
+  '/api/scenarios': typeof ApiScenariosRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/monitor': typeof MonitorRoute
+  '/api/callbacks': typeof ApiCallbacksRoute
+  '/api/contacts': typeof ApiContactsRouteWithChildren
+  '/api/incomingCall': typeof ApiIncomingCallRoute
+  '/api/scenarios': typeof ApiScenariosRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/monitor': typeof MonitorRoute
+  '/api/callbacks': typeof ApiCallbacksRoute
+  '/api/contacts': typeof ApiContactsRouteWithChildren
+  '/api/incomingCall': typeof ApiIncomingCallRoute
+  '/api/scenarios': typeof ApiScenariosRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/"
+  fullPaths:
+    | '/'
+    | '/health'
+    | '/monitor'
+    | '/api/callbacks'
+    | '/api/contacts'
+    | '/api/incomingCall'
+    | '/api/scenarios'
+    | '/api/status'
+    | '/api/contacts/$contactId/simulator-status'
   fileRoutesByTo: FileRoutesByTo
-  to: "/"
-  id: "__root__" | "/"
+  to:
+    | '/'
+    | '/health'
+    | '/monitor'
+    | '/api/callbacks'
+    | '/api/contacts'
+    | '/api/incomingCall'
+    | '/api/scenarios'
+    | '/api/status'
+    | '/api/contacts/$contactId/simulator-status'
+  id:
+    | '__root__'
+    | '/'
+    | '/health'
+    | '/monitor'
+    | '/api/callbacks'
+    | '/api/contacts'
+    | '/api/incomingCall'
+    | '/api/scenarios'
+    | '/api/status'
+    | '/api/contacts/$contactId/simulator-status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HealthRoute: typeof HealthRoute
+  MonitorRoute: typeof MonitorRoute
+  ApiCallbacksRoute: typeof ApiCallbacksRoute
+  ApiContactsRoute: typeof ApiContactsRouteWithChildren
+  ApiIncomingCallRoute: typeof ApiIncomingCallRoute
+  ApiScenariosRoute: typeof ApiScenariosRoute
+  ApiStatusRoute: typeof ApiStatusRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/"
-      path: "/"
-      fullPath: "/"
+    '/monitor': {
+      id: '/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof MonitorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/status': {
+      id: '/api/status'
+      path: '/api/status'
+      fullPath: '/api/status'
+      preLoaderRoute: typeof ApiStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scenarios': {
+      id: '/api/scenarios'
+      path: '/api/scenarios'
+      fullPath: '/api/scenarios'
+      preLoaderRoute: typeof ApiScenariosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/incomingCall': {
+      id: '/api/incomingCall'
+      path: '/api/incomingCall'
+      fullPath: '/api/incomingCall'
+      preLoaderRoute: typeof ApiIncomingCallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/contacts': {
+      id: '/api/contacts'
+      path: '/api/contacts'
+      fullPath: '/api/contacts'
+      preLoaderRoute: typeof ApiContactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/callbacks': {
+      id: '/api/callbacks'
+      path: '/api/callbacks'
+      fullPath: '/api/callbacks'
+      preLoaderRoute: typeof ApiCallbacksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/contacts/$contactId/simulator-status': {
+      id: '/api/contacts/$contactId/simulator-status'
+      path: '/$contactId/simulator-status'
+      fullPath: '/api/contacts/$contactId/simulator-status'
+      preLoaderRoute: typeof ApiContactsContactIdSimulatorStatusRouteImport
+      parentRoute: typeof ApiContactsRoute
     }
   }
 }
 
+interface ApiContactsRouteChildren {
+  ApiContactsContactIdSimulatorStatusRoute: typeof ApiContactsContactIdSimulatorStatusRoute
+}
+
+const ApiContactsRouteChildren: ApiContactsRouteChildren = {
+  ApiContactsContactIdSimulatorStatusRoute:
+    ApiContactsContactIdSimulatorStatusRoute,
+}
+
+const ApiContactsRouteWithChildren = ApiContactsRoute._addFileChildren(
+  ApiContactsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HealthRoute: HealthRoute,
+  MonitorRoute: MonitorRoute,
+  ApiCallbacksRoute: ApiCallbacksRoute,
+  ApiContactsRoute: ApiContactsRouteWithChildren,
+  ApiIncomingCallRoute: ApiIncomingCallRoute,
+  ApiScenariosRoute: ApiScenariosRoute,
+  ApiStatusRoute: ApiStatusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from "./router.tsx"
-import type { createStart } from "@tanstack/react-start"
-declare module "@tanstack/react-start" {
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>

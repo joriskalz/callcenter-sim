@@ -1,0 +1,34 @@
+[
+  {
+    "contactid": "sample-001",
+    "fullname": "Test Customer 001",
+    "telephone1": "+491234000001",
+    "new_ccsim_enabled": true,
+    "new_ccsim_reachabilitystatus": "reachable",
+    "new_ccsim_scenario": "instant-answer"
+  },
+  {
+    "contactid": "sample-002",
+    "fullname": "Test Customer 002",
+    "telephone1": "+491234000002",
+    "new_ccsim_enabled": true,
+    "new_ccsim_reachabilitystatus": "busy",
+    "new_ccsim_scenario": "slow-answer"
+  },
+  {
+    "contactid": "sample-003",
+    "fullname": "Test Customer 003",
+    "telephone1": "+491234000003",
+    "new_ccsim_enabled": true,
+    "new_ccsim_reachabilitystatus": "no_answer",
+    "new_ccsim_scenario": "no-answer"
+  },
+  {
+    "contactid": "sample-004",
+    "fullname": "Test Customer 004",
+    "telephone1": "+491234000004",
+    "new_ccsim_enabled": true,
+    "new_ccsim_reachabilitystatus": "voicemail",
+    "new_ccsim_scenario": "voicemail"
+  }
+]
