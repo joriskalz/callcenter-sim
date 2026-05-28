@@ -2,12 +2,15 @@ import {
   ActivityIcon,
   AlertTriangleIcon,
   CheckCircle2Icon,
+  EyeIcon,
+  EyeOffIcon,
   XCircleIcon,
 } from "lucide-react"
 import * as React from "react"
 import type { ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 import type { AppStatus } from "../types"
@@ -114,6 +117,7 @@ export function StatusOverview({
 
 function CallbackUrlCopy({ url }: { url: string }) {
   const [copied, setCopied] = React.useState(false)
+  const [showFullUrl, setShowFullUrl] = React.useState(false)
 
   React.useEffect(() => {
     if (!copied) return
@@ -128,27 +132,44 @@ function CallbackUrlCopy({ url }: { url: string }) {
   }
 
   if (copied) {
-    return (
-      <Badge
-        variant="outline"
-        className="mt-1 border-success/35 bg-success/10 text-success"
-      >
-        <CheckCircle2Icon className="size-3" />
-        Copied
-      </Badge>
-    )
+    return <CallbackUrlCopiedBadge />
   }
 
   return (
-    <button
-      type="button"
-      className="mt-1 rounded-sm text-left text-sm leading-snug font-semibold break-words outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      title="Copy callback URL"
-      aria-label="Copy callback URL"
-      onClick={() => void copyCallbackUrl()}
+    <div className="mt-1 flex min-w-0 items-start gap-1.5">
+      <button
+        type="button"
+        className="min-w-0 rounded-sm text-left text-sm leading-snug font-semibold break-words outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        title="Copy callback URL"
+        aria-label="Copy callback URL"
+        onClick={() => void copyCallbackUrl()}
+      >
+        {showFullUrl ? url : maskCallbackUrl(url)}
+      </button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="mt-0.5 text-muted-foreground hover:text-foreground"
+        aria-label={showFullUrl ? "Hide callback URL" : "Show callback URL"}
+        title={showFullUrl ? "Hide callback URL" : "Show callback URL"}
+        onClick={() => setShowFullUrl((visible) => !visible)}
+      >
+        {showFullUrl ? <EyeOffIcon /> : <EyeIcon />}
+      </Button>
+    </div>
+  )
+}
+
+function CallbackUrlCopiedBadge() {
+  return (
+    <Badge
+      variant="outline"
+      className="mt-1 border-success/35 bg-success/10 text-success"
     >
-      {maskCallbackUrl(url)}
-    </button>
+      <CheckCircle2Icon className="size-3" />
+      Copied
+    </Badge>
   )
 }
 
@@ -241,8 +262,10 @@ function maskCallbackUrl(value: string): string {
     const [firstLabel, ...restLabels] = url.hostname.split(".")
     if (!firstLabel || !restLabels.length) return value
 
-    url.hostname = [`${"*".repeat(firstLabel.length)}`, ...restLabels].join(".")
-    return url.toString()
+    const maskedHost = [`${"*".repeat(firstLabel.length)}`, ...restLabels].join(
+      "."
+    )
+    return `${url.protocol}//${maskedHost}${url.port ? `:${url.port}` : ""}${url.pathname}${url.search}${url.hash}`
   } catch {
     return value
   }
