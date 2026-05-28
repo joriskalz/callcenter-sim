@@ -13,6 +13,7 @@ import { Route as MonitorRouteImport } from './routes/monitor'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiStatusRouteImport } from './routes/api/status'
+import { Route as ApiSetupRouteImport } from './routes/api/setup'
 import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
 import { Route as ApiContactsRouteImport } from './routes/api/contacts'
@@ -41,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApiStatusRoute = ApiStatusRouteImport.update({
   id: '/api/status',
   path: '/api/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSetupRoute = ApiSetupRouteImport.update({
+  id: '/api/setup',
+  path: '/api/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiScenariosRoute = ApiScenariosRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts': typeof ApiContactsRouteWithChildren
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
+  '/api/setup': typeof ApiSetupRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/address': typeof ApiContactsAddressRoute
   '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/api/contacts': typeof ApiContactsRouteWithChildren
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
+  '/api/setup': typeof ApiSetupRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/address': typeof ApiContactsAddressRoute
   '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/api/contacts': typeof ApiContactsRouteWithChildren
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
+  '/api/setup': typeof ApiSetupRoute
   '/api/status': typeof ApiStatusRoute
   '/api/contacts/address': typeof ApiContactsAddressRoute
   '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/api/contacts'
     | '/api/incomingCall'
     | '/api/scenarios'
+    | '/api/setup'
     | '/api/status'
     | '/api/contacts/address'
     | '/api/contacts/$contactId/address'
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
     | '/api/contacts'
     | '/api/incomingCall'
     | '/api/scenarios'
+    | '/api/setup'
     | '/api/status'
     | '/api/contacts/address'
     | '/api/contacts/$contactId/address'
@@ -179,6 +190,7 @@ export interface FileRouteTypes {
     | '/api/contacts'
     | '/api/incomingCall'
     | '/api/scenarios'
+    | '/api/setup'
     | '/api/status'
     | '/api/contacts/address'
     | '/api/contacts/$contactId/address'
@@ -195,6 +207,7 @@ export interface RootRouteChildren {
   ApiContactsRoute: typeof ApiContactsRouteWithChildren
   ApiIncomingCallRoute: typeof ApiIncomingCallRoute
   ApiScenariosRoute: typeof ApiScenariosRoute
+  ApiSetupRoute: typeof ApiSetupRoute
   ApiStatusRoute: typeof ApiStatusRoute
   ApiMediaVoicemailToneWavRoute: typeof ApiMediaVoicemailToneWavRoute
 }
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/api/status'
       fullPath: '/api/status'
       preLoaderRoute: typeof ApiStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/setup': {
+      id: '/api/setup'
+      path: '/api/setup'
+      fullPath: '/api/setup'
+      preLoaderRoute: typeof ApiSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/scenarios': {
@@ -322,6 +342,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsRoute: ApiContactsRouteWithChildren,
   ApiIncomingCallRoute: ApiIncomingCallRoute,
   ApiScenariosRoute: ApiScenariosRoute,
+  ApiSetupRoute: ApiSetupRoute,
   ApiStatusRoute: ApiStatusRoute,
   ApiMediaVoicemailToneWavRoute: ApiMediaVoicemailToneWavRoute,
 }

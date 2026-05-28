@@ -21,10 +21,12 @@ import {
   useMonitorContactsQuery,
   useMonitorScenariosQuery,
   useMonitorStatusQuery,
+  useSetupStatusQuery,
 } from "../queries"
 import { reachabilityStatuses } from "../types"
-import type { ReachabilityStatus, Scenario } from "../types"
+import type { ConfigIssue, ReachabilityStatus, Scenario } from "../types"
 import { ActiveCallsTable } from "./active-calls-table"
+import { ConfigHelpPanel } from "./config-help-panel"
 import { ContactsTable } from "./contacts-table"
 import { EventStream } from "./event-stream"
 import { StatusOverview } from "./status-overview"
@@ -37,10 +39,12 @@ export function MonitorShell() {
   const [search, setSearch] = React.useState("")
   const [autoRefresh, setAutoRefresh] = React.useState(true)
   const [lastRefresh, setLastRefresh] = React.useState<string | null>(null)
+  const hasMonitorKey = Boolean(apiKey)
 
   const statusQuery = useMonitorStatusQuery(apiKey, autoRefresh)
   const contactsQuery = useMonitorContactsQuery(apiKey, autoRefresh)
   const scenariosQuery = useMonitorScenariosQuery(apiKey)
+  const setupQuery = useSetupStatusQuery()
 
   React.useEffect(() => {
     if (statusQuery.data && contactsQuery.data) {
@@ -49,6 +53,8 @@ export function MonitorShell() {
   }, [contactsQuery.data, statusQuery.data])
 
   const refresh = async () => {
+    if (!hasMonitorKey) return
+
     await Promise.all([
       statusQuery.refetch(),
       contactsQuery.refetch(),
@@ -57,7 +63,28 @@ export function MonitorShell() {
     setLastRefresh(new Date().toLocaleTimeString())
   }
 
-  const error = statusQuery.error ?? contactsQuery.error ?? scenariosQuery.error
+  const configIssues = React.useMemo(
+    () =>
+      hasMonitorKey
+        ? (statusQuery.data?.config.config_issues ?? [])
+        : [
+            monitorKeyIssue(setupQuery.data?.monitor_auth_configured ?? true),
+            ...(setupQuery.data?.config_issues ?? []),
+          ],
+    [
+      hasMonitorKey,
+      setupQuery.data?.config_issues,
+      setupQuery.data?.monitor_auth_configured,
+      statusQuery.data?.config.config_issues,
+    ]
+  )
+  const contactsConfigError = statusQuery.data ? contactsQuery.error : null
+  const showSetupMode =
+    !hasMonitorKey || configIssues.length > 0 || Boolean(contactsConfigError)
+  const error =
+    statusQuery.error ??
+    (showSetupMode ? null : contactsQuery.error) ??
+    scenariosQuery.error
   const scenarioOptions = React.useMemo(
     () => scenarioOptionsFromMap(scenariosQuery.data ?? {}),
     [scenariosQuery.data]
@@ -123,7 +150,11 @@ export function MonitorShell() {
               type="button"
               variant="outline"
               onClick={refresh}
-              disabled={statusQuery.isFetching || contactsQuery.isFetching}
+              disabled={
+                !hasMonitorKey ||
+                statusQuery.isFetching ||
+                contactsQuery.isFetching
+              }
             >
               <RefreshCwIcon />
               Refresh
@@ -154,21 +185,45 @@ export function MonitorShell() {
       <div className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <StatusOverview
           status={statusQuery.data}
-          isLoading={statusQuery.isPending}
+          isLoading={hasMonitorKey && statusQuery.isPending}
         />
-        <ContactsTable
-          contacts={contactsQuery.data ?? []}
-          scenarioOptions={scenarioOptions}
-          statusFilter={statusFilter}
-          search={search}
-          apiKey={apiKey}
-          isLoading={contactsQuery.isPending}
-        />
-        <ActiveCallsTable calls={statusQuery.data?.active_calls ?? []} />
-        <EventStream events={statusQuery.data?.recent_events ?? []} />
+        {showSetupMode ? (
+          <ConfigHelpPanel
+            issues={configIssues}
+            contactsError={contactsConfigError}
+          />
+        ) : (
+          <ContactsTable
+            contacts={contactsQuery.data ?? []}
+            scenarioOptions={scenarioOptions}
+            statusFilter={statusFilter}
+            search={search}
+            apiKey={apiKey}
+            isLoading={contactsQuery.isPending}
+          />
+        )}
+        {showSetupMode ? null : (
+          <>
+            <ActiveCallsTable calls={statusQuery.data?.active_calls ?? []} />
+            <EventStream events={statusQuery.data?.recent_events ?? []} />
+          </>
+        )}
       </div>
     </main>
   )
+}
+
+function monitorKeyIssue(monitorAuthConfigured: boolean): ConfigIssue {
+  return {
+    area: "Monitor",
+    title: monitorAuthConfigured
+      ? "Monitor API key required"
+      : "Monitor API key is not configured",
+    description: monitorAuthConfigured
+      ? "Enter the monitor API key from MONITOR_API_KEY in the password field above."
+      : "Add MONITOR_API_KEY to your local .env so the monitor can be protected, then let the dev server reload.",
+    envVars: ["MONITOR_API_KEY"],
+  }
 }
 
 function scenarioOptionsFromMap(scenarios: Record<string, Scenario>) {

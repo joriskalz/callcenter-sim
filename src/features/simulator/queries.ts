@@ -10,6 +10,7 @@ import type {
   ContactStatusPatch,
   PatchStatusResult,
   Scenario,
+  SetupStatus,
 } from "./types"
 
 const simulatorKeys = {
@@ -19,21 +20,36 @@ const simulatorKeys = {
     [...simulatorKeys.all, "contacts", apiKey] as const,
   scenarios: (apiKey: string) =>
     [...simulatorKeys.all, "scenarios", apiKey] as const,
+  setup: () => [...simulatorKeys.all, "setup"] as const,
+}
+
+export function useSetupStatusQuery() {
+  return useQuery({
+    queryKey: simulatorKeys.setup(),
+    queryFn: () => fetchJson<SetupStatus>("/api/setup"),
+    staleTime: 3000,
+  })
 }
 
 export function useMonitorStatusQuery(apiKey: string, autoRefresh: boolean) {
+  const enabled = Boolean(apiKey)
+
   return useQuery({
     queryKey: simulatorKeys.status(apiKey),
     queryFn: () => fetchMonitorJson<AppStatus>("/api/status", apiKey),
-    refetchInterval: autoRefresh ? 3000 : false,
+    enabled,
+    refetchInterval: enabled && autoRefresh ? 3000 : false,
   })
 }
 
 export function useMonitorContactsQuery(apiKey: string, autoRefresh: boolean) {
+  const enabled = Boolean(apiKey)
+
   return useQuery({
     queryKey: simulatorKeys.contacts(apiKey),
     queryFn: () => fetchMonitorJson<Contact[]>("/api/contacts", apiKey),
-    refetchInterval: autoRefresh ? 3000 : false,
+    enabled,
+    refetchInterval: enabled && autoRefresh ? 3000 : false,
   })
 }
 
@@ -42,6 +58,7 @@ export function useMonitorScenariosQuery(apiKey: string) {
     queryKey: simulatorKeys.scenarios(apiKey),
     queryFn: () =>
       fetchMonitorJson<Record<string, Scenario>>("/api/scenarios", apiKey),
+    enabled: Boolean(apiKey),
     staleTime: 60_000,
   })
 }
@@ -158,6 +175,21 @@ async function fetchMonitorJson<T>(
       "Content-Type": "application/json",
       ...(apiKey ? { "x-monitor-api-key": apiKey } : {}),
       ...init.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const message = await errorMessage(response)
+    throw new Error(message)
+  }
+
+  return (await response.json()) as T
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    headers: {
+      "Content-Type": "application/json",
     },
   })
 

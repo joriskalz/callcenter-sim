@@ -133,6 +133,7 @@ export type ConfigStatus = {
   acs_configured: boolean
   tts_configured: boolean
   dataverse_configured: boolean
+  config_issues: ConfigIssue[]
   monitor_auth_configured: boolean
   webhook_secret_configured: boolean
   scenario_count: number
@@ -140,6 +141,14 @@ export type ConfigStatus = {
   callback_url: string
   callback_url_valid: boolean
   callback_url_problem: string | null
+}
+
+export type ConfigIssue = {
+  area: "Monitor" | "ACS" | "TTS" | "Dataverse" | "Callback URL"
+  title: string
+  description: string
+  envVars: string[]
+  learnUrl?: string
 }
 
 export type AppStatus = {
@@ -150,6 +159,11 @@ export type AppStatus = {
   active_calls: ActiveCall[]
   recent_events: CallEvent[]
   recent_errors: CallEvent[]
+}
+
+export type SetupStatus = {
+  monitor_auth_configured: boolean
+  config_issues: ConfigIssue[]
 }
 
 export type MonitorCredentials = {

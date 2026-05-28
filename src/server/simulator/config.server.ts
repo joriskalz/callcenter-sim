@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
-import type { Scenario } from "@/features/simulator/types"
+import type { ConfigIssue, Scenario } from "@/features/simulator/types"
 
 const defaultMessage =
   "Hallo, dies ist ein automatisierter Testkunde fuer Dynamics 365 Contact Center. " +
@@ -90,6 +90,116 @@ export function dataverseConfigured(settings = getSettings()): boolean {
     settings.dataverseClientId &&
     settings.dataverseClientSecret
   )
+}
+
+export function configIssues(settings = getSettings()): ConfigIssue[] {
+  const issues: ConfigIssue[] = []
+  const acsProblem = acsConfigurationProblem(settings)
+  const ttsProblem = ttsConfigurationProblem(settings)
+  const dataverseProblem = dataverseConfigurationProblem(settings)
+  const callbackProblem = callbackUrlProblem(settings)
+
+  if (acsProblem) {
+    issues.push({
+      area: "ACS",
+      title: "Azure Communication Services is not ready",
+      description: acsProblem,
+      envVars: ["ACS_CONNECTION_STRING"],
+      learnUrl:
+        "https://learn.microsoft.com/en-us/azure/communication-services/quickstarts/call-automation/quickstart-make-an-outbound-call",
+    })
+  }
+
+  if (ttsProblem) {
+    issues.push({
+      area: "TTS",
+      title: "Text-to-speech endpoint is not ready",
+      description: ttsProblem,
+      envVars: ["COGNITIVE_SERVICES_ENDPOINT"],
+      learnUrl:
+        "https://learn.microsoft.com/en-us/azure/communication-services/how-tos/call-automation/play-action",
+    })
+  }
+
+  if (dataverseProblem) {
+    issues.push({
+      area: "Dataverse",
+      title: "Dataverse connection is not ready",
+      description: dataverseProblem,
+      envVars: [
+        "DATAVERSE_URL",
+        "DATAVERSE_TENANT_ID",
+        "DATAVERSE_CLIENT_ID",
+        "DATAVERSE_CLIENT_SECRET",
+        "DATAVERSE_CONTACT_FIELD_PREFIX",
+      ],
+      learnUrl:
+        "https://learn.microsoft.com/en-us/power-apps/developer/data-platform/authentication",
+    })
+  }
+
+  if (callbackProblem) {
+    issues.push({
+      area: "Callback URL",
+      title: "Public callback URL is not valid",
+      description: callbackProblem,
+      envVars: ["PUBLIC_BASE_URL", "CALLBACK_PATH"],
+      learnUrl:
+        "https://learn.microsoft.com/en-us/azure/communication-services/concepts/call-automation/call-automation",
+    })
+  }
+
+  return issues
+}
+
+function acsConfigurationProblem(settings: Settings): string | null {
+  if (!settings.acsConnectionString) {
+    return "Set ACS_CONNECTION_STRING to the connection string from your Azure Communication Services resource."
+  }
+
+  const lower = settings.acsConnectionString.toLowerCase()
+  if (!lower.includes("endpoint=") || !lower.includes("accesskey=")) {
+    return "ACS_CONNECTION_STRING should look like endpoint=<resource endpoint>;accesskey=<access key>."
+  }
+
+  return null
+}
+
+function ttsConfigurationProblem(settings: Settings): string | null {
+  if (!settings.cognitiveServicesEndpoint) {
+    return "Set COGNITIVE_SERVICES_ENDPOINT to the Azure AI Services endpoint linked to Call Automation for text-to-speech."
+  }
+
+  return validHttpsUrl(settings.cognitiveServicesEndpoint)
+    ? null
+    : "COGNITIVE_SERVICES_ENDPOINT must be a valid https URL."
+}
+
+function dataverseConfigurationProblem(settings: Settings): string | null {
+  const missing = [
+    ["DATAVERSE_URL", settings.dataverseUrl],
+    ["DATAVERSE_TENANT_ID", settings.dataverseTenantId],
+    ["DATAVERSE_CLIENT_ID", settings.dataverseClientId],
+    ["DATAVERSE_CLIENT_SECRET", settings.dataverseClientSecret],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
+
+  if (missing.length) {
+    return `Set ${missing.join(", ")} in .env so server-side Dataverse Web API calls can authenticate.`
+  }
+
+  return settings.dataverseUrl && validHttpsUrl(settings.dataverseUrl)
+    ? null
+    : "DATAVERSE_URL must be the https URL of your Dataverse environment, for example https://org.crm4.dynamics.com."
+}
+
+function validHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 export function callbackUrlProblem(settings = getSettings()): string | null {

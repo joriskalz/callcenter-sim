@@ -12,6 +12,7 @@ import type {
   PatchStatusResult,
   ReachabilityStatus,
   Scenario,
+  SetupStatus,
 } from "@/features/simulator/types"
 
 import { answerCall, hangUp, playText, rejectIncomingCall } from "./acs.server"
@@ -19,6 +20,7 @@ import {
   acsConfigured,
   callbackUrl,
   callbackUrlProblem,
+  configIssues,
   dataverseConfigured,
   getSettings,
 } from "./config.server"
@@ -58,6 +60,14 @@ export function healthStatus(): Record<string, unknown> {
   }
 }
 
+export function setupStatus(): SetupStatus {
+  const settings = getSettings()
+  return {
+    monitor_auth_configured: Boolean(settings.monitorApiKey),
+    config_issues: configIssues(settings),
+  }
+}
+
 export function appStatus(): AppStatus {
   const settings = getSettings()
   const problem = callbackUrlProblem(settings)
@@ -69,6 +79,7 @@ export function appStatus(): AppStatus {
       acs_configured: acsConfigured(settings),
       tts_configured: Boolean(settings.cognitiveServicesEndpoint),
       dataverse_configured: dataverseConfigured(settings),
+      config_issues: configIssues(settings),
       monitor_auth_configured: Boolean(settings.monitorApiKey),
       webhook_secret_configured: Boolean(settings.webhookSharedSecret),
       scenario_count: scenarioCount(),
