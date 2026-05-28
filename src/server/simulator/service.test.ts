@@ -10,6 +10,8 @@ import {
   handleCallbackPayload,
   handleIncomingCallPayload,
   healthStatus,
+  randomizeAddress,
+  randomizeAllAddresses,
 } from "./service.server"
 
 describe("simulator service", () => {
@@ -41,6 +43,22 @@ describe("simulator service", () => {
         expect.objectContaining({ telephone1: "+491234000001" }),
       ])
     )
+  })
+
+  it("sets a random sample address for one contact without Dataverse", async () => {
+    const result = await randomizeAddress("sample-001")
+
+    expect(result.contactid).toBe("sample-001")
+    expect(result.appliedAddress.city).toBeTruthy()
+    expect(result.contact.address1_city).toBe(result.appliedAddress.city)
+    expect(result.contact.address1_line1).toBe(result.appliedAddress.line1)
+  })
+
+  it("sets random sample addresses for all contacts without Dataverse", async () => {
+    const result = await randomizeAllAddresses()
+
+    expect(result.updated.length).toBeGreaterThan(0)
+    expect(result.updated.every((item) => item.appliedAddress.city)).toBe(true)
   })
 
   it("answers Event Grid validation requests", async () => {

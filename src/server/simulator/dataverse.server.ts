@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import type {
+  AddressPreset,
   Contact,
+  ContactAddressBatchResult,
+  ContactAddressResult,
   ContactConsent,
   ContactConsentPatch,
   ContactConsentResult,
@@ -41,6 +44,49 @@ const consentValuesByCode = Object.fromEntries(
   Object.entries(consentValues).map(([key, value]) => [value, key])
 ) as Record<number, ConsentValue>
 
+const addressPresets: AddressPreset[] = [
+  {
+    label: "Berlin Mitte",
+    line1: "Friedrichstrasse 90",
+    city: "Berlin",
+    postalCode: "10117",
+    country: "Deutschland",
+    stateOrProvince: "Berlin",
+  },
+  {
+    label: "Hamburg HafenCity",
+    line1: "Am Sandtorkai 30",
+    city: "Hamburg",
+    postalCode: "20457",
+    country: "Deutschland",
+    stateOrProvince: "Hamburg",
+  },
+  {
+    label: "Muenchen Altstadt",
+    line1: "Theatinerstrasse 8",
+    city: "Muenchen",
+    postalCode: "80333",
+    country: "Deutschland",
+    stateOrProvince: "Bayern",
+  },
+  {
+    label: "Koeln Innenstadt",
+    line1: "Hohe Strasse 55",
+    city: "Koeln",
+    postalCode: "50667",
+    country: "Deutschland",
+    stateOrProvince: "Nordrhein-Westfalen",
+  },
+  {
+    label: "Frankfurt Westend",
+    line1: "Bockenheimer Landstrasse 24",
+    city: "Frankfurt am Main",
+    postalCode: "60323",
+    country: "Deutschland",
+    stateOrProvince: "Hessen",
+  },
+]
+
 export async function listContacts(): Promise<Contact[]> {
   const settings = getSettings()
   if (!dataverseConfigured(settings)) return sampleContacts(settings)
@@ -50,6 +96,10 @@ export async function listContacts(): Promise<Contact[]> {
     "contactid",
     "fullname",
     "telephone1",
+    "address1_line1",
+    "address1_city",
+    "address1_postalcode",
+    "address1_country",
     `${prefix}_ccsim_enabled`,
     `${prefix}_ccsim_reachabilitystatus`,
     `${prefix}_ccsim_scenario`,
@@ -186,6 +236,28 @@ export async function removeContactConsent(
   }
 
   return { contactid: contactId, consent: null }
+}
+
+export async function randomizeContactAddress(
+  contactId: string
+): Promise<ContactAddressResult> {
+  const settings = getSettings()
+  const contact = await contactById(contactId)
+  if (!contact) throw new Error("Contact was not found.")
+
+  return applyRandomAddress(contact, settings)
+}
+
+export async function randomizeAllContactAddresses(): Promise<ContactAddressBatchResult> {
+  const settings = getSettings()
+  const contacts = await listContacts()
+  const updated: ContactAddressResult[] = []
+
+  for (const contact of contacts) {
+    updated.push(await applyRandomAddress(contact, settings))
+  }
+
+  return { updated }
 }
 
 async function requestDataverse<T>(
@@ -469,6 +541,10 @@ function normalizeContact(value: unknown): Contact {
     contactid: String(input.contactid ?? "sample-001"),
     fullname: String(input.fullname ?? ""),
     telephone1: stringOrNull(input.telephone1),
+    address1_line1: stringOrNull(input.address1_line1),
+    address1_city: stringOrNull(input.address1_city),
+    address1_postalcode: stringOrNull(input.address1_postalcode),
+    address1_country: stringOrNull(input.address1_country),
     new_ccsim_enabled: Boolean(input.new_ccsim_enabled),
     new_ccsim_reachabilitystatus: reachabilityOrUnknown(
       input.new_ccsim_reachabilitystatus
@@ -489,6 +565,10 @@ function contactFromDataverse(
     contactid: String(item.contactid ?? ""),
     fullname: String(item.fullname ?? ""),
     telephone1: stringOrNull(item.telephone1),
+    address1_line1: stringOrNull(item.address1_line1),
+    address1_city: stringOrNull(item.address1_city),
+    address1_postalcode: stringOrNull(item.address1_postalcode),
+    address1_country: stringOrNull(item.address1_country),
     new_ccsim_enabled: Boolean(item[`${prefix}_ccsim_enabled`]),
     new_ccsim_reachabilitystatus: reachabilityOrUnknown(
       item[`${prefix}_ccsim_reachabilitystatus`]
@@ -507,6 +587,10 @@ function fallbackContact(): Contact {
     contactid: "sample-001",
     fullname: "Test Customer 001",
     telephone1: "+491234000001",
+    address1_line1: "Friedrichstrasse 90",
+    address1_city: "Berlin",
+    address1_postalcode: "10117",
+    address1_country: "Deutschland",
     new_ccsim_enabled: true,
     new_ccsim_reachabilitystatus: "reachable",
     new_ccsim_scenario: "instant-answer",
@@ -556,6 +640,54 @@ function purposeFromDataverse(
     smsEnforcementModel: numberOrNull(item.msdynmkt_smsenforcementmodel),
     voiceEnforcementModel: numberOrNull(item.msdynmkt_voiceenforcementmodel),
   }
+}
+
+async function applyRandomAddress(
+  contact: Contact,
+  settings: Settings
+): Promise<ContactAddressResult> {
+  const nextAddress = pickAddressPreset(contact.address1_city)
+
+  if (dataverseConfigured(settings)) {
+    await requestDataverse(
+      "PATCH",
+      `/api/data/v9.2/contacts(${contact.contactid})`,
+      {
+        address1_line1: nextAddress.line1,
+        address1_city: nextAddress.city,
+        address1_postalcode: nextAddress.postalCode,
+        address1_country: nextAddress.country,
+        address1_stateorprovince: nextAddress.stateOrProvince,
+      }
+    )
+  }
+
+  return {
+    contactid: contact.contactid,
+    previousCity: contact.address1_city,
+    appliedAddress: nextAddress,
+    contact: {
+      ...contact,
+      address1_line1: nextAddress.line1,
+      address1_city: nextAddress.city,
+      address1_postalcode: nextAddress.postalCode,
+      address1_country: nextAddress.country,
+    },
+  }
+}
+
+function pickAddressPreset(currentCity: string | null): AddressPreset {
+  const normalizedCurrentCity = currentCity?.trim().toLocaleLowerCase("de-DE")
+  const candidates = normalizedCurrentCity
+    ? addressPresets.filter(
+        (address) =>
+          address.city.trim().toLocaleLowerCase("de-DE") !==
+          normalizedCurrentCity
+      )
+    : addressPresets
+
+  const pool = candidates.length ? candidates : addressPresets
+  return pool[Math.floor(Math.random() * pool.length)] ?? addressPresets[0]
 }
 
 function consentPayload(

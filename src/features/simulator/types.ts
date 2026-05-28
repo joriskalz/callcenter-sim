@@ -36,6 +36,10 @@ export type Contact = {
   contactid: string
   fullname: string
   telephone1: string | null
+  address1_line1: string | null
+  address1_city: string | null
+  address1_postalcode: string | null
+  address1_country: string | null
   new_ccsim_enabled: boolean
   new_ccsim_reachabilitystatus: ReachabilityStatus
   new_ccsim_scenario: string | null
@@ -68,6 +72,26 @@ export type ContactConsentPatch = {
 export type ContactConsentResult = {
   contactid: string
   consent: ContactConsent | null
+}
+
+export type AddressPreset = {
+  label: string
+  line1: string
+  city: string
+  postalCode: string
+  country: string
+  stateOrProvince: string
+}
+
+export type ContactAddressResult = {
+  contactid: string
+  contact: Contact
+  previousCity: string | null
+  appliedAddress: AddressPreset
+}
+
+export type ContactAddressBatchResult = {
+  updated: ContactAddressResult[]
 }
 
 export type ActiveCall = {

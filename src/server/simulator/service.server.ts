@@ -4,9 +4,11 @@ import type {
   ActiveCall,
   AppStatus,
   CallEvent,
-  ContactStatusPatch,
+  ContactAddressBatchResult,
+  ContactAddressResult,
   ContactConsentPatch,
   ContactConsentResult,
+  ContactStatusPatch,
   PatchStatusResult,
   ReachabilityStatus,
   Scenario,
@@ -23,8 +25,10 @@ import {
 import {
   contactByPhoneNumber,
   listContacts,
-  removeContactConsent,
   patchContactStatus,
+  randomizeAllContactAddresses,
+  randomizeContactAddress,
+  removeContactConsent,
   setContactConsent,
 } from "./dataverse.server"
 import {
@@ -109,6 +113,16 @@ export async function removeConsent(
   contactId: string
 ): Promise<ContactConsentResult> {
   return removeContactConsent(contactId)
+}
+
+export async function randomizeAddress(
+  contactId: string
+): Promise<ContactAddressResult> {
+  return randomizeContactAddress(contactId)
+}
+
+export async function randomizeAllAddresses(): Promise<ContactAddressBatchResult> {
+  return randomizeAllContactAddresses()
 }
 
 export function scenarios(): Record<string, Scenario> {

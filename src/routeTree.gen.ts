@@ -17,9 +17,11 @@ import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
 import { Route as ApiContactsRouteImport } from './routes/api/contacts'
 import { Route as ApiCallbacksRouteImport } from './routes/api/callbacks'
+import { Route as ApiContactsAddressRouteImport } from './routes/api/contacts/address'
 import { Route as ApiMediaVoicemailToneWavRouteImport } from './routes/api/media/voicemail-tone.wav'
 import { Route as ApiContactsContactIdSimulatorStatusRouteImport } from './routes/api/contacts/$contactId/simulator-status'
 import { Route as ApiContactsContactIdConsentRouteImport } from './routes/api/contacts/$contactId/consent'
+import { Route as ApiContactsContactIdAddressRouteImport } from './routes/api/contacts/$contactId/address'
 
 const MonitorRoute = MonitorRouteImport.update({
   id: '/monitor',
@@ -61,6 +63,11 @@ const ApiCallbacksRoute = ApiCallbacksRouteImport.update({
   path: '/api/callbacks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContactsAddressRoute = ApiContactsAddressRouteImport.update({
+  id: '/address',
+  path: '/address',
+  getParentRoute: () => ApiContactsRoute,
+} as any)
 const ApiMediaVoicemailToneWavRoute =
   ApiMediaVoicemailToneWavRouteImport.update({
     id: '/api/media/voicemail-tone/wav',
@@ -79,6 +86,12 @@ const ApiContactsContactIdConsentRoute =
     path: '/$contactId/consent',
     getParentRoute: () => ApiContactsRoute,
   } as any)
+const ApiContactsContactIdAddressRoute =
+  ApiContactsContactIdAddressRouteImport.update({
+    id: '/$contactId/address',
+    path: '/$contactId/address',
+    getParentRoute: () => ApiContactsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +102,8 @@ export interface FileRoutesByFullPath {
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
+  '/api/contacts/address': typeof ApiContactsAddressRoute
+  '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
   '/api/contacts/$contactId/consent': typeof ApiContactsContactIdConsentRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
   '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
@@ -102,6 +117,8 @@ export interface FileRoutesByTo {
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
+  '/api/contacts/address': typeof ApiContactsAddressRoute
+  '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
   '/api/contacts/$contactId/consent': typeof ApiContactsContactIdConsentRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
   '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
@@ -116,6 +133,8 @@ export interface FileRoutesById {
   '/api/incomingCall': typeof ApiIncomingCallRoute
   '/api/scenarios': typeof ApiScenariosRoute
   '/api/status': typeof ApiStatusRoute
+  '/api/contacts/address': typeof ApiContactsAddressRoute
+  '/api/contacts/$contactId/address': typeof ApiContactsContactIdAddressRoute
   '/api/contacts/$contactId/consent': typeof ApiContactsContactIdConsentRoute
   '/api/contacts/$contactId/simulator-status': typeof ApiContactsContactIdSimulatorStatusRoute
   '/api/media/voicemail-tone/wav': typeof ApiMediaVoicemailToneWavRoute
@@ -131,6 +150,8 @@ export interface FileRouteTypes {
     | '/api/incomingCall'
     | '/api/scenarios'
     | '/api/status'
+    | '/api/contacts/address'
+    | '/api/contacts/$contactId/address'
     | '/api/contacts/$contactId/consent'
     | '/api/contacts/$contactId/simulator-status'
     | '/api/media/voicemail-tone/wav'
@@ -144,6 +165,8 @@ export interface FileRouteTypes {
     | '/api/incomingCall'
     | '/api/scenarios'
     | '/api/status'
+    | '/api/contacts/address'
+    | '/api/contacts/$contactId/address'
     | '/api/contacts/$contactId/consent'
     | '/api/contacts/$contactId/simulator-status'
     | '/api/media/voicemail-tone/wav'
@@ -157,6 +180,8 @@ export interface FileRouteTypes {
     | '/api/incomingCall'
     | '/api/scenarios'
     | '/api/status'
+    | '/api/contacts/address'
+    | '/api/contacts/$contactId/address'
     | '/api/contacts/$contactId/consent'
     | '/api/contacts/$contactId/simulator-status'
     | '/api/media/voicemail-tone/wav'
@@ -232,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCallbacksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/contacts/address': {
+      id: '/api/contacts/address'
+      path: '/address'
+      fullPath: '/api/contacts/address'
+      preLoaderRoute: typeof ApiContactsAddressRouteImport
+      parentRoute: typeof ApiContactsRoute
+    }
     '/api/media/voicemail-tone/wav': {
       id: '/api/media/voicemail-tone/wav'
       path: '/api/media/voicemail-tone/wav'
@@ -253,15 +285,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsContactIdConsentRouteImport
       parentRoute: typeof ApiContactsRoute
     }
+    '/api/contacts/$contactId/address': {
+      id: '/api/contacts/$contactId/address'
+      path: '/$contactId/address'
+      fullPath: '/api/contacts/$contactId/address'
+      preLoaderRoute: typeof ApiContactsContactIdAddressRouteImport
+      parentRoute: typeof ApiContactsRoute
+    }
   }
 }
 
 interface ApiContactsRouteChildren {
+  ApiContactsAddressRoute: typeof ApiContactsAddressRoute
+  ApiContactsContactIdAddressRoute: typeof ApiContactsContactIdAddressRoute
   ApiContactsContactIdConsentRoute: typeof ApiContactsContactIdConsentRoute
   ApiContactsContactIdSimulatorStatusRoute: typeof ApiContactsContactIdSimulatorStatusRoute
 }
 
 const ApiContactsRouteChildren: ApiContactsRouteChildren = {
+  ApiContactsAddressRoute: ApiContactsAddressRoute,
+  ApiContactsContactIdAddressRoute: ApiContactsContactIdAddressRoute,
   ApiContactsContactIdConsentRoute: ApiContactsContactIdConsentRoute,
   ApiContactsContactIdSimulatorStatusRoute:
     ApiContactsContactIdSimulatorStatusRoute,

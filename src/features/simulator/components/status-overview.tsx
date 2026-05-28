@@ -4,8 +4,10 @@ import {
   CheckCircle2Icon,
   XCircleIcon,
 } from "lucide-react"
+import * as React from "react"
 import type { ReactNode } from "react"
 
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 import type { AppStatus } from "../types"
@@ -96,18 +98,57 @@ export function StatusOverview({
             <div className="text-xs font-medium text-muted-foreground uppercase">
               Callback URL
             </div>
-            <div
-              className={cn(
-                "mt-1 text-sm leading-snug font-semibold break-words",
-                callbackOk ? "text-foreground" : "text-warning"
-              )}
-            >
-              {callbackText}
-            </div>
+            {callbackOk ? (
+              <CallbackUrlCopy url={status.config.callback_url} />
+            ) : (
+              <div className="mt-1 text-sm leading-snug font-semibold break-words text-warning">
+                {callbackText}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </Section>
+  )
+}
+
+function CallbackUrlCopy({ url }: { url: string }) {
+  const [copied, setCopied] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!copied) return
+
+    const timeout = window.setTimeout(() => setCopied(false), 2000)
+    return () => window.clearTimeout(timeout)
+  }, [copied])
+
+  const copyCallbackUrl = async () => {
+    await copyText(url)
+    setCopied(true)
+  }
+
+  if (copied) {
+    return (
+      <Badge
+        variant="outline"
+        className="mt-1 border-success/35 bg-success/10 text-success"
+      >
+        <CheckCircle2Icon className="size-3" />
+        Copied
+      </Badge>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="mt-1 rounded-sm text-left text-sm leading-snug font-semibold break-words outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      title="Copy callback URL"
+      aria-label="Copy callback URL"
+      onClick={() => void copyCallbackUrl()}
+    >
+      {maskCallbackUrl(url)}
+    </button>
   )
 }
 
@@ -192,4 +233,40 @@ function textToneClass(tone: "success" | "warning" | "destructive") {
   if (tone === "success") return "text-success"
   if (tone === "warning") return "text-warning"
   return "text-destructive"
+}
+
+function maskCallbackUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    const [firstLabel, ...restLabels] = url.hostname.split(".")
+    if (!firstLabel || !restLabels.length) return value
+
+    url.hostname = [`${"*".repeat(firstLabel.length)}`, ...restLabels].join(".")
+    return url.toString()
+  } catch {
+    return value
+  }
+}
+
+async function copyText(value: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value)
+    return
+  } catch {
+    // Fall back for browsers or contexts where the async clipboard API is blocked.
+  }
+
+  const textArea = document.createElement("textarea")
+  textArea.value = value
+  textArea.setAttribute("readonly", "")
+  textArea.style.position = "fixed"
+  textArea.style.opacity = "0"
+  document.body.append(textArea)
+  textArea.select()
+
+  try {
+    document.execCommand("copy")
+  } finally {
+    textArea.remove()
+  }
 }

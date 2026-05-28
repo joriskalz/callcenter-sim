@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   AppStatus,
   Contact,
+  ContactAddressBatchResult,
+  ContactAddressResult,
   ContactConsentPatch,
   ContactConsentResult,
   ContactStatusPatch,
@@ -100,6 +102,42 @@ export function useRemoveContactConsentMutation(apiKey: string) {
         `/api/contacts/${encodeURIComponent(input.contactId)}/consent`,
         apiKey,
         { method: "DELETE" }
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: simulatorKeys.contacts(apiKey),
+      })
+    },
+  })
+}
+
+export function useRandomizeContactAddressMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { contactId: string }) =>
+      fetchMonitorJson<ContactAddressResult>(
+        `/api/contacts/${encodeURIComponent(input.contactId)}/address`,
+        apiKey,
+        { method: "PATCH" }
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: simulatorKeys.contacts(apiKey),
+      })
+    },
+  })
+}
+
+export function useRandomizeAllContactAddressesMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () =>
+      fetchMonitorJson<ContactAddressBatchResult>(
+        "/api/contacts/address",
+        apiKey,
+        { method: "PATCH" }
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
