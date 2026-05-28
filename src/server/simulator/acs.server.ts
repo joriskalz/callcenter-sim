@@ -4,6 +4,7 @@ import { getSettings, voicemailToneUrl } from "./config.server"
 import { callEvent, simulatorState } from "./state.server"
 
 let clientCache: unknown | null = null
+const maxSsmlBreakSeconds = 20
 
 export async function answerCall(
   incomingCallContext: string,
@@ -148,43 +149,77 @@ type AcsClient = {
   }
 }
 
-type PlaySource =
-  | {
-      kind: "textSource"
-      text: string
-      sourceLocale: string
-      voiceName: string
-    }
-  | {
-      kind: "ssmlSource"
-      ssmlText: string
-    }
+type PlaySource = {
+  kind: "ssmlSource"
+  ssmlText: string
+}
 
 function playSourceForScenario(
   scenario: Scenario,
   settings: ReturnType<typeof getSettings>
 ): PlaySource {
+  const ssmlText = ssmlForScenario(scenario, settings)
   if (scenario.name === "voicemail") {
-    const locale = scenario.locale || settings.defaultLocale
-    const voiceName = scenario.voiceName ?? settings.defaultVoiceName
     return {
       kind: "ssmlSource",
-      ssmlText:
-        `<speak version="1.0" xml:lang="${escapeXmlAttribute(locale)}">` +
-        `<voice name="${escapeXmlAttribute(voiceName)}">` +
-        `${escapeXmlText(scenario.message ?? "")}` +
-        `<break time="500ms"/>` +
-        `<audio src="${escapeXmlAttribute(voicemailToneUrl(settings))}"/>` +
-        `</voice></speak>`,
+      ssmlText: ssmlText.replace(
+        "</voice></speak>",
+        `<break time="500ms"/><audio src="${escapeXmlAttribute(
+          voicemailToneUrl(settings)
+        )}"/></voice></speak>`
+      ),
     }
   }
 
   return {
-    kind: "textSource",
-    text: scenario.message ?? "",
-    sourceLocale: scenario.locale,
-    voiceName: scenario.voiceName ?? settings.defaultVoiceName,
+    kind: "ssmlSource",
+    ssmlText,
   }
+}
+
+function ssmlForScenario(
+  scenario: Scenario,
+  settings: ReturnType<typeof getSettings>
+): string {
+  const locale = scenario.locale || settings.defaultLocale
+  const voiceName = scenario.voiceName ?? settings.defaultVoiceName
+  const events = scenario.events.length
+    ? scenario.events
+    : scenario.messages.length
+      ? scenario.messages.flatMap((message) => [
+          { type: "tts" as const, text: message.text },
+          { type: "pause" as const, seconds: message.pauseAfterSeconds },
+        ])
+      : scenario.message
+        ? [{ type: "tts" as const, text: scenario.message }]
+        : []
+
+  return (
+    `<speak version="1.0" xml:lang="${escapeXmlAttribute(locale)}">` +
+    `<voice name="${escapeXmlAttribute(voiceName)}">` +
+    events
+      .map((event) =>
+        event.type === "tts"
+          ? escapeXmlText(event.text)
+          : breakTag(event.seconds)
+      )
+      .join("") +
+    `</voice></speak>`
+  )
+}
+
+function breakTag(seconds: number): string {
+  if (seconds <= 0) return ""
+
+  const tags: string[] = []
+  let remainingMs = Math.round(seconds * 1000)
+  const maxBreakMs = maxSsmlBreakSeconds * 1000
+  while (remainingMs > 0) {
+    const chunkMs = Math.min(remainingMs, maxBreakMs)
+    tags.push(`<break time="${chunkMs}ms"/>`)
+    remainingMs -= chunkMs
+  }
+  return tags.join("")
 }
 
 function escapeXmlText(value: string): string {

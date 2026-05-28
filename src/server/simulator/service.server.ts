@@ -9,7 +9,10 @@ import type {
   ContactConsentPatch,
   ContactConsentResult,
   ContactStatusPatch,
+  DeliveryCorrelation,
+  DeliveryTimeline,
   PatchStatusResult,
+  ProactiveDelivery,
   ReachabilityStatus,
   Scenario,
   SetupStatus,
@@ -23,10 +26,12 @@ import {
   configIssues,
   dataverseConfigured,
   getSettings,
+  normalizePhone,
 } from "./config.server"
 import {
   contactByPhoneNumber,
   listContacts,
+  listRecentProactiveDeliveries,
   patchContactStatus,
   randomizeAllContactAddresses,
   randomizeContactAddress,
@@ -46,6 +51,7 @@ import {
   scenarioByTargetNumber,
   scenarioCount,
   scenarioForNameOrNumber,
+  updateScenarios,
 } from "./scenarios.server"
 import { callEvent, simulatorState, utcNow } from "./state.server"
 
@@ -90,8 +96,33 @@ export function appStatus(): AppStatus {
     },
     active_call_count: activeCalls.length,
     active_calls: activeCalls,
+    delivery_timelines: [],
+    delivery_error: null,
     recent_events: simulatorState.recentEvents(),
     recent_errors: simulatorState.recentErrors(),
+  }
+}
+
+export async function monitorStatus(): Promise<AppStatus> {
+  const status = appStatus()
+
+  try {
+    const deliveries = await listRecentProactiveDeliveries()
+    return {
+      ...status,
+      delivery_timelines: buildDeliveryTimelines(
+        deliveries,
+        simulatorState.recentCalls(),
+        simulatorState.recentEvents()
+      ),
+      delivery_error: null,
+    }
+  } catch (error) {
+    return {
+      ...status,
+      delivery_timelines: [],
+      delivery_error: errorMessage(error),
+    }
   }
 }
 
@@ -140,6 +171,12 @@ export async function randomizeAllAddresses(): Promise<ContactAddressBatchResult
 
 export function scenarios(): Record<string, Scenario> {
   return allScenarios()
+}
+
+export function saveScenarioDefinitions(
+  payload: Record<string, unknown>
+): Record<string, Scenario> {
+  return updateScenarios(payload)
 }
 
 export async function handleIncomingCallPayload(
@@ -598,6 +635,107 @@ function eventFromCall(
     to_number: call.to_number,
     error,
   })
+}
+
+export function buildDeliveryTimelines(
+  deliveries: ProactiveDelivery[],
+  calls: ActiveCall[],
+  events: CallEvent[]
+): DeliveryTimeline[] {
+  return deliveries.map((delivery) => {
+    const match = deliveryCallMatch(delivery, calls)
+    const toNumber = delivery.to_address ?? match.call?.to_number ?? null
+    const phone = normalizePhone(toNumber)
+    const simulatorEvents = events
+      .filter((event) => {
+        if (
+          match.call &&
+          event.operation_context === match.call.operation_context
+        ) {
+          return true
+        }
+        if (
+          match.call?.call_connection_id &&
+          event.call_connection_id === match.call.call_connection_id
+        ) {
+          return true
+        }
+        if (
+          match.call?.server_call_id &&
+          event.server_call_id === match.call.server_call_id
+        ) {
+          return true
+        }
+        return phone && normalizePhone(event.to_number) === phone
+      })
+      .sort(
+        (left, right) =>
+          Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
+      )
+      .slice(-8)
+
+    return {
+      id: delivery.id,
+      correlation: match.correlation,
+      to_number: toNumber,
+      contact_id: delivery.contact_id ?? null,
+      delivery,
+      simulator_call: match.call,
+      simulator_events: simulatorEvents,
+    }
+  })
+}
+
+function deliveryCallMatch(
+  delivery: ProactiveDelivery,
+  calls: ActiveCall[]
+): { call: ActiveCall | null; correlation: DeliveryCorrelation } {
+  const callId = delivery.call_id?.trim()
+  if (callId) {
+    const callIdMatch = calls.find(
+      (call) =>
+        call.server_call_id === callId ||
+        call.call_connection_id === callId ||
+        call.operation_context === callId
+    )
+    if (callIdMatch) return { call: callIdMatch, correlation: "call_id" }
+  }
+
+  const deliveryPhone = normalizePhone(delivery.to_address)
+  if (!deliveryPhone) return { call: null, correlation: "unmatched" }
+
+  const phoneMatches = calls.filter(
+    (call) => normalizePhone(call.to_number) === deliveryPhone
+  )
+  if (!phoneMatches.length) return { call: null, correlation: "unmatched" }
+
+  return {
+    call: closestCallByTime(delivery, phoneMatches),
+    correlation: "phone",
+  }
+}
+
+function closestCallByTime(
+  delivery: ProactiveDelivery,
+  calls: ActiveCall[]
+): ActiveCall {
+  const anchor =
+    timestamp(delivery.start_date) ??
+    timestamp(delivery.created_on) ??
+    timestamp(delivery.modified_on)
+  if (anchor === null) return calls[0]
+
+  return [...calls].sort(
+    (left, right) =>
+      Math.abs(timestamp(left.incoming_call_time)! - anchor) -
+      Math.abs(timestamp(right.incoming_call_time)! - anchor)
+  )[0]
+}
+
+function timestamp(value: string | null): number | null {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function callbackError(data: Record<string, unknown>): string | null {

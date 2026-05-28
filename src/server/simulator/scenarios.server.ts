@@ -5,12 +5,18 @@ import {
   getSettings,
   loadScenarios,
   normalizePhone,
+  saveScenarios,
 } from "./config.server"
 
 let scenariosCache: Record<string, Scenario> | null = null
 
 export function allScenarios(): Record<string, Scenario> {
   scenariosCache ??= loadScenarios(getSettings())
+  return { ...scenariosCache }
+}
+
+export function updateScenarios(payload: Record<string, unknown>) {
+  scenariosCache = saveScenarios(payload, getSettings())
   return { ...scenariosCache }
 }
 

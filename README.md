@@ -339,8 +339,21 @@ DEFAULT_VOICE_NAME=de-DE-KatjaNeural
 ```
 
 The app passes this endpoint to ACS Call Automation when answering a call. ACS
-then uses it for `TextSource` and `SsmlSource` playback, including voicemail
-prompts and the generated voicemail tone.
+then uses it for `SsmlSource` playback, including paced prompts, voicemail
+prompts, and the generated voicemail tone.
+
+Scenario files can define a `messages` array for connected calls. Each item has
+`text` and `pauseAfterSeconds`; the sample reachable scenarios use multiple TTS
+turns with at least 45 seconds of pauses before hangup. Legacy one-line
+`message` scenarios still work and are padded to at least 45 seconds of
+playback.
+
+The monitor also includes a scenario editor. It writes changes back to
+`SCENARIOS_PATH` and models connected-call playback as an ordered event list:
+`tts` events speak text and `pause` events wait for the configured number of
+seconds. The language selector can apply English, Spanish, French, Arabic,
+Italian, Dutch, Portuguese, or German voice/text presets to one scenario or all
+scenarios.
 
 ### 5. Connect It To Proactive Engagement
 
@@ -459,6 +472,10 @@ This makes dial-mode testing repeatable. You can run the same journey with
 different contact states to compare pacing, retries, representative reservation,
 AI handoff, voicemail handling, and no-answer behavior.
 
+The Delivery Timeline correlates recent `msdyn_proactive_delivery` rows with
+simulator calls and events by call id or phone number. Recent correlated rows are
+cached in browser storage so the timeline remains available after a page reload.
+
 ## Configuration
 
 The app reads configuration from `.env`. Use `.env.example` as the starting
@@ -552,6 +569,7 @@ msdynmkt_contactpointconsent4
 | `GET /api/contacts` | monitor key | Contact list from Dataverse or sample data. |
 | `PATCH /api/contacts/:contactId/simulator-status` | monitor key | Update enabled, reachability, scenario, or last-call fields. |
 | `GET /api/scenarios` | monitor key | Scenario definitions. |
+| `PUT /api/scenarios` | monitor key | Persist edited scenario definitions to `SCENARIOS_PATH`. |
 | `PATCH /api/contacts/:contactId/consent` | monitor key | Set voice consent for a contact point. |
 | `DELETE /api/contacts/:contactId/consent` | monitor key | Remove the voice consent record. |
 | `PATCH /api/contacts/:contactId/address` | monitor key | Set a random address for one contact. |

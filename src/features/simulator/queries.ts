@@ -39,6 +39,8 @@ export function useMonitorStatusQuery(apiKey: string, autoRefresh: boolean) {
     queryFn: () => fetchMonitorJson<AppStatus>("/api/status", apiKey),
     enabled,
     refetchInterval: enabled && autoRefresh ? 3000 : false,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
   })
 }
 
@@ -60,6 +62,23 @@ export function useMonitorScenariosQuery(apiKey: string) {
       fetchMonitorJson<Record<string, Scenario>>("/api/scenarios", apiKey),
     enabled: Boolean(apiKey),
     staleTime: 60_000,
+  })
+}
+
+export function useSaveScenariosMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (scenarios: Record<string, Scenario>) =>
+      fetchMonitorJson<Record<string, Scenario>>("/api/scenarios", apiKey, {
+        method: "PUT",
+        body: JSON.stringify(scenarios),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: simulatorKeys.scenarios(apiKey),
+      })
+    },
   })
 }
 
@@ -171,6 +190,7 @@ async function fetchMonitorJson<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { "x-monitor-api-key": apiKey } : {}),

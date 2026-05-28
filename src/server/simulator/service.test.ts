@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   appStatus,
+  buildDeliveryTimelines,
   contacts,
   handleCallbackPayload,
   handleIncomingCallPayload,
@@ -14,6 +15,11 @@ import {
   randomizeAddress,
   randomizeAllAddresses,
 } from "./service.server"
+import type {
+  ActiveCall,
+  CallEvent,
+  ProactiveDelivery,
+} from "@/features/simulator/types"
 
 describe("simulator service", () => {
   beforeEach(() => {
@@ -299,6 +305,51 @@ describe("simulator service", () => {
     expect(event.event_type).toBe("PlayFailed")
     expect(event.error).toBe("500: Play failed.")
   })
+
+  it("correlates proactive deliveries with simulator calls and events by phone", () => {
+    const timelines = buildDeliveryTimelines(
+      [
+        proactiveDelivery({
+          id: "delivery-1",
+          to_address: "+49 1234 999 001",
+          status: "Completed",
+          result: "Answered",
+          modified_on: "2026-05-28T10:01:00.000Z",
+        }),
+      ],
+      [
+        activeCall({
+          operation_context: "ccsim:test",
+          to_number: "+491234999001",
+          incoming_call_time: "2026-05-28T10:00:00.000Z",
+          state: "waiting_after_play",
+          result: "played",
+        }),
+      ],
+      [
+        callEventForTest({
+          event_type: "PlayCompleted",
+          operation_context: "ccsim:test",
+          to_number: "+491234999001",
+          occurred_at: "2026-05-28T10:00:40.000Z",
+        }),
+      ]
+    )
+
+    expect(timelines).toHaveLength(1)
+    expect(timelines[0]).toMatchObject({
+      correlation: "phone",
+      to_number: "+49 1234 999 001",
+      simulator_call: {
+        operation_context: "ccsim:test",
+      },
+      simulator_events: [
+        expect.objectContaining({
+          event_type: "PlayCompleted",
+        }),
+      ],
+    })
+  })
 })
 
 function useSampleContacts(contactRows: Array<Record<string, unknown>>) {
@@ -306,4 +357,81 @@ function useSampleContacts(contactRows: Array<Record<string, unknown>>) {
   const path = join(directory, "contacts.json")
   writeFileSync(path, JSON.stringify(contactRows), "utf8")
   vi.stubEnv("SAMPLE_CONTACTS_PATH", path)
+}
+
+function proactiveDelivery(
+  overrides: Partial<ProactiveDelivery>
+): ProactiveDelivery {
+  return {
+    id: "delivery",
+    delivery_id: null,
+    tracking_id: null,
+    call_id: null,
+    channel: null,
+    dial_mode_type: null,
+    to_address: null,
+    from_address: null,
+    engagement_type: null,
+    speech_detected: null,
+    status: null,
+    state: null,
+    result: null,
+    disposition_codes: null,
+    contact_id: null,
+    conversation_id: null,
+    batch_id: null,
+    queue_id: null,
+    country: null,
+    postal_code: null,
+    sequence_number: null,
+    ttl_in_seconds: null,
+    version_number: null,
+    start_date: null,
+    end_date: null,
+    result_date: null,
+    created_on: null,
+    modified_on: null,
+    call_record: null,
+    contact_record: null,
+    ...overrides,
+  }
+}
+
+function activeCall(overrides: Partial<ActiveCall>): ActiveCall {
+  return {
+    server_call_id: null,
+    call_connection_id: null,
+    operation_context: "ccsim:test",
+    from_number: null,
+    to_number: null,
+    scenario_name: "instant-answer",
+    state: "incoming",
+    current_action: null,
+    incoming_call_time: "2026-05-28T10:00:00.000Z",
+    answer_time: null,
+    call_connected_time: null,
+    play_started_time: null,
+    play_completed_time: null,
+    hangup_time: null,
+    call_disconnected_time: null,
+    result: null,
+    error: null,
+    ...overrides,
+  }
+}
+
+function callEventForTest(overrides: Partial<CallEvent>): CallEvent {
+  return {
+    event_type: "IncomingCall",
+    message: "Event",
+    occurred_at: "2026-05-28T10:00:00.000Z",
+    server_call_id: null,
+    call_connection_id: null,
+    operation_context: null,
+    scenario_name: null,
+    to_number: null,
+    error: null,
+    raw: null,
+    ...overrides,
+  }
 }

@@ -84,7 +84,7 @@ function SetupIssueCard({ issue }: { issue: ConfigIssue }) {
 
       {issue.learnUrl ? (
         <Button
-          type="button"
+          nativeButton={false}
           variant="outline"
           size="sm"
           className="mt-4"

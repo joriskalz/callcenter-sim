@@ -81,6 +81,17 @@ class SimulatorState {
     )
   }
 
+  recentCalls(): ActiveCall[] {
+    const limit = getSettings().recentEventLimit
+    return Array.from(this.callsByOperation.values())
+      .sort(
+        (left, right) =>
+          Date.parse(right.incoming_call_time) -
+          Date.parse(left.incoming_call_time)
+      )
+      .slice(0, limit)
+  }
+
   recentEvents(): CallEvent[] {
     return this.events
   }

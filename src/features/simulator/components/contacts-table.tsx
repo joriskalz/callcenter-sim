@@ -9,7 +9,6 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -32,6 +31,7 @@ import { ReachabilityStatusPopover } from "./reachability-status-popover"
 import { ScenarioPopover } from "./scenario-popover"
 import type { ScenarioOption } from "./scenario-popover"
 import { Section } from "./section"
+import { SensitiveCopy } from "./sensitive-value"
 
 export function ContactsTable({
   contacts,
@@ -40,6 +40,8 @@ export function ContactsTable({
   search,
   apiKey,
   isLoading,
+  revealSensitive,
+  onRevealSensitiveChange,
 }: {
   contacts: Contact[]
   scenarioOptions: ScenarioOption[]
@@ -47,8 +49,9 @@ export function ContactsTable({
   search: string
   apiKey: string
   isLoading: boolean
+  revealSensitive: boolean
+  onRevealSensitiveChange: (value: boolean) => void
 }) {
-  const [showPhoneNumbers, setShowPhoneNumbers] = React.useState(false)
   const randomizeAllMutation = useRandomizeAllContactAddressesMutation(apiKey)
   const filteredContacts = [...contacts]
     .sort(compareContactsByName)
@@ -108,19 +111,19 @@ export function ContactsTable({
                   variant="ghost"
                   size="icon-xs"
                   aria-label={
-                    showPhoneNumbers
+                    revealSensitive
                       ? "Hide full phone numbers"
                       : "Show full phone numbers"
                   }
                   title={
-                    showPhoneNumbers
+                    revealSensitive
                       ? "Hide full phone numbers"
                       : "Show full phone numbers"
                   }
-                  onClick={() => setShowPhoneNumbers((visible) => !visible)}
+                  onClick={() => onRevealSensitiveChange(!revealSensitive)}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  {showPhoneNumbers ? <EyeOffIcon /> : <EyeIcon />}
+                  {revealSensitive ? <EyeOffIcon /> : <EyeIcon />}
                 </Button>
               </div>
             </TableHead>
@@ -147,7 +150,7 @@ export function ContactsTable({
                 contact={contact}
                 scenarioOptions={scenarioOptions}
                 apiKey={apiKey}
-                showPhoneNumber={showPhoneNumbers}
+                revealSensitive={revealSensitive}
               />
             ))
           ) : (
@@ -167,12 +170,12 @@ function ContactRow({
   contact,
   scenarioOptions,
   apiKey,
-  showPhoneNumber,
+  revealSensitive,
 }: {
   contact: Contact
   scenarioOptions: ScenarioOption[]
   apiKey: string
-  showPhoneNumber: boolean
+  revealSensitive: boolean
 }) {
   const [enabled, setEnabled] = React.useState(contact.new_ccsim_enabled)
   const [status, setStatus] = React.useState<ReachabilityStatus>(
@@ -220,7 +223,7 @@ function ContactRow({
       <TableCell>
         <PhoneNumberCopy
           phoneNumber={contact.telephone1}
-          showPhoneNumber={showPhoneNumber}
+          revealSensitive={revealSensitive}
         />
       </TableCell>
       <TableCell className="whitespace-normal">
@@ -375,62 +378,19 @@ function RowMutationState({
 
 function PhoneNumberCopy({
   phoneNumber,
-  showPhoneNumber,
+  revealSensitive,
 }: {
   phoneNumber: string | null
-  showPhoneNumber: boolean
+  revealSensitive: boolean
 }) {
-  const [copied, setCopied] = React.useState(false)
-
-  React.useEffect(() => {
-    if (!copied) return
-
-    const timeout = window.setTimeout(() => setCopied(false), 2000)
-    return () => window.clearTimeout(timeout)
-  }, [copied])
-
-  if (!phoneNumber) return null
-
-  const displayValue = showPhoneNumber
-    ? phoneNumber
-    : maskPhoneNumber(phoneNumber)
-
-  const copyPhoneNumber = async () => {
-    await copyText(phoneNumber)
-    setCopied(true)
-  }
-
-  if (copied) {
-    return (
-      <Badge
-        variant="outline"
-        className="border-success/35 bg-success/10 font-mono text-success"
-      >
-        <CheckIcon className="size-3" />
-        Copied
-      </Badge>
-    )
-  }
-
   return (
-    <button
-      type="button"
-      className="rounded-sm font-mono text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      title="Copy phone number"
-      aria-label={`Copy phone number ${phoneNumber}`}
-      onClick={() => void copyPhoneNumber()}
-    >
-      {displayValue}
-    </button>
+    <SensitiveCopy
+      value={phoneNumber}
+      reveal={revealSensitive}
+      kind="phone"
+      label="phone number"
+    />
   )
-}
-
-function maskPhoneNumber(phoneNumber: string | null): string {
-  if (!phoneNumber) return ""
-  if (phoneNumber.length <= 5) return phoneNumber
-  return `${phoneNumber.slice(0, 3)}${"•".repeat(
-    Math.max(2, phoneNumber.length - 5)
-  )}${phoneNumber.slice(-2)}`
 }
 
 function scenarioValue(
@@ -438,29 +398,6 @@ function scenarioValue(
   scenarioOptions: ScenarioOption[]
 ) {
   return current || scenarioOptions.at(0)?.name || ""
-}
-
-async function copyText(value: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value)
-    return
-  } catch {
-    // Fall back for browsers or contexts where the async clipboard API is blocked.
-  }
-
-  const textArea = document.createElement("textarea")
-  textArea.value = value
-  textArea.setAttribute("readonly", "")
-  textArea.style.position = "fixed"
-  textArea.style.opacity = "0"
-  document.body.append(textArea)
-  textArea.select()
-
-  try {
-    document.execCommand("copy")
-  } finally {
-    textArea.remove()
-  }
 }
 
 function compareContactsByName(left: Contact, right: Contact): number {

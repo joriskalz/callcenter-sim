@@ -2,32 +2,144 @@
   "+491234000001": {
     "name": "instant-answer",
     "answer": true,
-    "answerDelaySeconds": 0,
-    "message": "Hallo, ich nehme sofort ab.",
-    "locale": "de-DE",
-    "voiceName": "de-DE-KatjaNeural",
-    "hangupAfterSeconds": 10
+    "answerDelaySeconds": 1,
+    "language": "en",
+    "locale": "en-US",
+    "voiceName": "en-US-JennyNeural",
+    "hangupAfterSeconds": 3,
+    "events": [
+      {
+        "type": "tts",
+        "text": "Hello, thank you for calling. I am available right now."
+      },
+      {
+        "type": "pause",
+        "seconds": 7
+      },
+      {
+        "type": "tts",
+        "text": "One moment please, I am moving to a quieter place."
+      },
+      {
+        "type": "pause",
+        "seconds": 10
+      },
+      {
+        "type": "tts",
+        "text": "Okay, I can hear you better now. What is this about?"
+      },
+      {
+        "type": "pause",
+        "seconds": 9
+      },
+      {
+        "type": "tts",
+        "text": "Understood. I will stay on the line while you complete the next step."
+      },
+      {
+        "type": "pause",
+        "seconds": 9
+      },
+      {
+        "type": "tts",
+        "text": "Thanks for the information. For this test, the call was answered successfully."
+      },
+      {
+        "type": "pause",
+        "seconds": 10
+      }
+    ]
   },
   "+491234000002": {
     "name": "slow-answer",
     "answer": true,
     "answerDelaySeconds": 8,
-    "message": "Hallo, ich habe etwas spaeter abgenommen.",
-    "locale": "de-DE",
-    "voiceName": "de-DE-KatjaNeural",
-    "hangupAfterSeconds": 15
+    "language": "en",
+    "locale": "en-US",
+    "voiceName": "en-US-JennyNeural",
+    "hangupAfterSeconds": 3,
+    "events": [
+      {
+        "type": "tts",
+        "text": "Hello, sorry, I answered a little late."
+      },
+      {
+        "type": "pause",
+        "seconds": 8
+      },
+      {
+        "type": "tts",
+        "text": "I had to come from another room. I am on the phone now."
+      },
+      {
+        "type": "pause",
+        "seconds": 9
+      },
+      {
+        "type": "tts",
+        "text": "Could you please explain that again slowly?"
+      },
+      {
+        "type": "pause",
+        "seconds": 10
+      },
+      {
+        "type": "tts",
+        "text": "Okay, I understand. I will wait while you check the data in the system."
+      },
+      {
+        "type": "pause",
+        "seconds": 8
+      },
+      {
+        "type": "tts",
+        "text": "Thank you, that is enough for my test call. I will hang up shortly."
+      },
+      {
+        "type": "pause",
+        "seconds": 10
+      }
+    ]
   },
   "+491234000003": {
     "name": "no-answer",
-    "answer": false
+    "answer": false,
+    "answerDelaySeconds": 0,
+    "language": "en",
+    "locale": "en-US",
+    "voiceName": "en-US-JennyNeural",
+    "hangupAfterSeconds": 10,
+    "events": []
   },
   "+491234000004": {
     "name": "voicemail",
     "answer": true,
     "answerDelaySeconds": 3,
-    "message": "Sie haben die Voicemail erreicht. Bitte hinterlassen Sie eine Nachricht nach dem Ton.",
-    "locale": "de-DE",
-    "voiceName": "de-DE-KatjaNeural",
-    "hangupAfterSeconds": 20
+    "language": "en",
+    "locale": "en-US",
+    "voiceName": "en-US-JennyNeural",
+    "hangupAfterSeconds": 3,
+    "events": [
+      {
+        "type": "tts",
+        "text": "You have reached the test customer's voicemail."
+      },
+      {
+        "type": "tts",
+        "text": "I cannot take the call personally right now."
+      },
+      {
+        "type": "tts",
+        "text": "Please leave your name, your reason for calling, and a callback number."
+      },
+      {
+        "type": "tts",
+        "text": "Please leave a message after the tone."
+      },
+      {
+        "type": "pause",
+        "seconds": 45
+      }
+    ]
   }
 }

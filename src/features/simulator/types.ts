@@ -27,10 +27,38 @@ export type Scenario = {
   answer: boolean
   answerDelaySeconds: number
   message: string | null
+  messages: ScenarioMessage[]
+  events: ScenarioEvent[]
+  language: ScenarioLanguage
   locale: string
   voiceName: string | null
   hangupAfterSeconds: number | null
 }
+
+export type ScenarioLanguage =
+  | "en"
+  | "es"
+  | "fr"
+  | "ar"
+  | "it"
+  | "nl"
+  | "pt"
+  | "de"
+
+export type ScenarioMessage = {
+  text: string
+  pauseAfterSeconds: number
+}
+
+export type ScenarioEvent =
+  | {
+      type: "tts"
+      text: string
+    }
+  | {
+      type: "pause"
+      seconds: number
+    }
 
 export type Contact = {
   contactid: string
@@ -116,6 +144,58 @@ export type ActiveCall = {
   error: string | null
 }
 
+export type ProactiveDelivery = {
+  id: string
+  delivery_id: string | null
+  tracking_id: string | null
+  call_id: string | null
+  channel: string | null
+  dial_mode_type: string | null
+  to_address: string | null
+  from_address: string | null
+  engagement_type: string | null
+  speech_detected: boolean | null
+  status: string | null
+  state: string | null
+  result: string | null
+  disposition_codes: string | null
+  contact_id: string | null
+  conversation_id: string | null
+  batch_id: string | null
+  queue_id: string | null
+  country: string | null
+  postal_code: string | null
+  sequence_number: number | null
+  ttl_in_seconds: number | null
+  version_number: number | null
+  start_date: string | null
+  end_date: string | null
+  result_date: string | null
+  created_on: string | null
+  modified_on: string | null
+  call_record: DataverseRecordLink | null
+  contact_record: DataverseRecordLink | null
+}
+
+export type DataverseRecordLink = {
+  id: string
+  entity_logical_name: string
+  display_name: string
+  url: string
+}
+
+export type DeliveryCorrelation = "call_id" | "phone" | "unmatched"
+
+export type DeliveryTimeline = {
+  id: string
+  correlation: DeliveryCorrelation
+  to_number: string | null
+  contact_id: string | null
+  delivery: ProactiveDelivery
+  simulator_call: ActiveCall | null
+  simulator_events: CallEvent[]
+}
+
 export type CallEvent = {
   event_type: string
   message: string
@@ -157,6 +237,8 @@ export type AppStatus = {
   config: ConfigStatus
   active_call_count: number
   active_calls: ActiveCall[]
+  delivery_timelines: DeliveryTimeline[]
+  delivery_error: string | null
   recent_events: CallEvent[]
   recent_errors: CallEvent[]
 }

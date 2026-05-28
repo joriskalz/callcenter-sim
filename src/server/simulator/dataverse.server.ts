@@ -11,7 +11,9 @@ import type {
   ContactConsentResult,
   ContactStatusPatch,
   ConsentValue,
+  DataverseRecordLink,
   PatchStatusResult,
+  ProactiveDelivery,
   ReachabilityStatus,
 } from "@/features/simulator/types"
 
@@ -30,6 +32,8 @@ type TokenCache = {
 let tokenCache: TokenCache | null = null
 let purposeNavigationPropertyCache: string | null = null
 let consentPurposeCache: { key: string; id: string } | null = null
+let proactiveDeliveryEntitySetCache: string | null = null
+const entitySetNameCache = new Map<string, string>()
 
 const consentEntitySet = "msdynmkt_contactpointconsent4s"
 const voiceContactPointType = 534120003
@@ -43,6 +47,37 @@ const consentValues: Record<ConsentValue, number> = {
 const consentValuesByCode = Object.fromEntries(
   Object.entries(consentValues).map(([key, value]) => [value, key])
 ) as Record<number, ConsentValue>
+
+const proactiveDeliverySelectFields = [
+  "msdyn_proactive_deliveryid",
+  "msdyn_delivery_id",
+  "msdyn_tracking_id",
+  "msdyn_call_id",
+  "msdyn_channel",
+  "msdyn_dialmode_type",
+  "msdyn_to_address",
+  "msdyn_from_address",
+  "msdyn_engagement_type",
+  "msdyn_speech_detected",
+  "msdyn_status",
+  "msdyn_state",
+  "msdyn_result",
+  "msdyn_disposition_codes",
+  "msdyn_contact_id",
+  "msdyn_conversation_id",
+  "msdyn_batch_id",
+  "msdyn_queue_id",
+  "msdyn_country",
+  "msdyn_postal_code",
+  "msdyn_seq_no",
+  "ttlinseconds",
+  "versionnumber",
+  "msdyn_start_date",
+  "msdyn_end_date",
+  "msdyn_result_date",
+  "createdon",
+  "modifiedon",
+]
 
 const addressPresets: AddressPreset[] = [
   {
@@ -262,6 +297,25 @@ export async function randomizeAllContactAddresses(): Promise<ContactAddressBatc
   return { updated }
 }
 
+export async function listRecentProactiveDeliveries(): Promise<
+  ProactiveDelivery[]
+> {
+  const settings = getSettings()
+  if (!dataverseConfigured(settings)) return []
+
+  const deliveryEntitySetName = await proactiveDeliveryEntitySetName()
+  const select = proactiveDeliverySelectFields.join(",")
+  const response = await requestDataverse<{
+    value?: Array<Record<string, unknown>>
+  }>(
+    "GET",
+    `/api/data/v9.2/${deliveryEntitySetName}?$select=${select}&$orderby=modifiedon desc&$top=25`
+  )
+
+  const deliveries = (response.value ?? []).map(proactiveDeliveryFromDataverse)
+  return Promise.all(deliveries.map(enrichProactiveDelivery))
+}
+
 async function requestDataverse<T>(
   method: string,
   path: string,
@@ -290,6 +344,32 @@ async function requestDataverse<T>(
   }
   if (response.status === 204) return {} as T
   return (await response.json()) as T
+}
+
+async function proactiveDeliveryEntitySetName(): Promise<string> {
+  if (proactiveDeliveryEntitySetCache) return proactiveDeliveryEntitySetCache
+
+  proactiveDeliveryEntitySetCache = await entitySetName(
+    "msdyn_proactive_delivery",
+    "msdyn_proactive_deliveries"
+  )
+  return proactiveDeliveryEntitySetCache
+}
+
+async function entitySetName(
+  logicalName: string,
+  fallback: string
+): Promise<string> {
+  const cached = entitySetNameCache.get(logicalName)
+  if (cached) return cached
+
+  const response = await requestDataverse<{ EntitySetName?: string }>(
+    "GET",
+    `/api/data/v9.2/EntityDefinitions(LogicalName='${logicalName}')?$select=EntitySetName`
+  )
+  const resolved = response.EntitySetName || fallback
+  entitySetNameCache.set(logicalName, resolved)
+  return resolved
 }
 
 async function contactById(contactId: string): Promise<Contact | null> {
@@ -593,6 +673,157 @@ function contactFromDataverse(
   }
 }
 
+function proactiveDeliveryFromDataverse(
+  item: Record<string, unknown>
+): ProactiveDelivery {
+  return {
+    id: String(item.msdyn_proactive_deliveryid ?? ""),
+    delivery_id: stringOrNull(item.msdyn_delivery_id),
+    tracking_id: stringOrNull(item.msdyn_tracking_id),
+    call_id: stringOrNull(item.msdyn_call_id),
+    channel: stringOrNull(item.msdyn_channel),
+    dial_mode_type: stringOrNull(item.msdyn_dialmode_type),
+    to_address: stringOrNull(item.msdyn_to_address),
+    from_address: stringOrNull(item.msdyn_from_address),
+    engagement_type: stringOrNull(item.msdyn_engagement_type),
+    speech_detected: booleanOrNull(item.msdyn_speech_detected),
+    status: stringOrNull(item.msdyn_status),
+    state: stringOrNull(item.msdyn_state),
+    result: stringOrNull(item.msdyn_result),
+    disposition_codes: stringOrNull(item.msdyn_disposition_codes),
+    contact_id: stringOrNull(item.msdyn_contact_id),
+    conversation_id: stringOrNull(item.msdyn_conversation_id),
+    batch_id: stringOrNull(item.msdyn_batch_id),
+    queue_id: stringOrNull(item.msdyn_queue_id),
+    country: stringOrNull(item.msdyn_country),
+    postal_code: stringOrNull(item.msdyn_postal_code),
+    sequence_number: numberOrNull(item.msdyn_seq_no),
+    ttl_in_seconds: numberOrNull(item.ttlinseconds),
+    version_number: numberOrNull(item.versionnumber),
+    start_date: stringOrNull(item.msdyn_start_date),
+    end_date: stringOrNull(item.msdyn_end_date),
+    result_date: stringOrNull(item.msdyn_result_date),
+    created_on: stringOrNull(item.createdon),
+    modified_on: stringOrNull(item.modifiedon),
+    call_record: null,
+    contact_record: null,
+  }
+}
+
+async function enrichProactiveDelivery(
+  delivery: ProactiveDelivery
+): Promise<ProactiveDelivery> {
+  const [contactRecord, callRecord] = await Promise.all([
+    resolveContactRecord(delivery.contact_id),
+    resolveCallRecord(delivery.call_id),
+  ])
+
+  return {
+    ...delivery,
+    contact_record: contactRecord,
+    call_record: callRecord,
+  }
+}
+
+async function resolveContactRecord(
+  id: string | null
+): Promise<DataverseRecordLink | null> {
+  const guid = guidOrNull(id)
+  if (!guid) return null
+
+  try {
+    const contact = await requestDataverse<Record<string, unknown>>(
+      "GET",
+      `/api/data/v9.2/contacts(${guid})?$select=contactid,fullname`
+    )
+    return dataverseRecordLink(
+      "contact",
+      guid,
+      stringOrNull(contact.fullname) ?? "Contact"
+    )
+  } catch {
+    return null
+  }
+}
+
+async function resolveCallRecord(
+  id: string | null
+): Promise<DataverseRecordLink | null> {
+  const guid = guidOrNull(id)
+  if (!guid) return null
+
+  return (
+    (await resolveRecordCandidate(guid, {
+      entityLogicalName: "phonecall",
+      entitySetFallback: "phonecalls",
+      select: "activityid,subject",
+      displayFields: ["subject"],
+      defaultDisplayName: "Phone call",
+    })) ??
+    (await resolveRecordCandidate(guid, {
+      entityLogicalName: "msdyn_ocliveworkitem",
+      entitySetFallback: "msdyn_ocliveworkitems",
+      select: "msdyn_ocliveworkitemid,msdyn_title,msdyn_name",
+      displayFields: ["msdyn_title", "msdyn_name"],
+      defaultDisplayName: "Conversation work item",
+    })) ??
+    (await resolveRecordCandidate(guid, {
+      entityLogicalName: "msdyn_ocsession",
+      entitySetFallback: "msdyn_ocsessions",
+      select: "msdyn_ocsessionid,msdyn_name",
+      displayFields: ["msdyn_name"],
+      defaultDisplayName: "Omnichannel session",
+    }))
+  )
+}
+
+async function resolveRecordCandidate(
+  guid: string,
+  candidate: {
+    entityLogicalName: string
+    entitySetFallback: string
+    select: string
+    displayFields: string[]
+    defaultDisplayName: string
+  }
+): Promise<DataverseRecordLink | null> {
+  try {
+    const setName = await entitySetName(
+      candidate.entityLogicalName,
+      candidate.entitySetFallback
+    )
+    const row = await requestDataverse<Record<string, unknown>>(
+      "GET",
+      `/api/data/v9.2/${setName}(${guid})?$select=${candidate.select}`
+    )
+    const displayName =
+      candidate.displayFields
+        .map((field) => stringOrNull(row[field]))
+        .find(Boolean) ?? candidate.defaultDisplayName
+    return dataverseRecordLink(candidate.entityLogicalName, guid, displayName)
+  } catch {
+    return null
+  }
+}
+
+function dataverseRecordLink(
+  entityLogicalName: string,
+  id: string,
+  displayName: string
+): DataverseRecordLink {
+  const settings = getSettings()
+  const baseUrl = settings.dataverseUrl?.replace(/\/+$/, "") ?? ""
+  const cleanId = cleanGuid(id)
+  return {
+    id: cleanId,
+    entity_logical_name: entityLogicalName,
+    display_name: displayName,
+    url: `${baseUrl}/main.aspx?pagetype=entityrecord&etn=${encodeURIComponent(
+      entityLogicalName
+    )}&id=${encodeURIComponent(cleanId)}`,
+  }
+}
+
 function fallbackContact(): Contact {
   return {
     contactid: "sample-001",
@@ -754,6 +985,10 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
 }
 
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null
+}
+
 function consentValueOrUnknown(value: unknown): ContactConsent["value"] {
   if (typeof value === "string") {
     if (["not_set", "opted_in", "opted_out"].includes(value)) {
@@ -767,6 +1002,16 @@ function consentValueOrUnknown(value: unknown): ContactConsent["value"] {
 
 function cleanGuid(value: string): string {
   return value.replace(/[{}]/g, "")
+}
+
+function guidOrNull(value: string | null): string | null {
+  if (!value) return null
+  const clean = cleanGuid(value)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    clean
+  )
+    ? clean
+    : null
 }
 
 function odataString(value: string): string {

@@ -1,8 +1,15 @@
 import { StatusBadge } from "./status-badge"
 import { Section } from "./section"
 import type { CallEvent } from "../types"
+import { SensitiveValue } from "./sensitive-value"
 
-export function EventStream({ events }: { events: CallEvent[] }) {
+export function EventStream({
+  events,
+  revealSensitive,
+}: {
+  events: CallEvent[]
+  revealSensitive: boolean
+}) {
   return (
     <Section title="Event Stream" meta={`${events.length} events`}>
       <div className="divide-y">
@@ -20,10 +27,22 @@ export function EventStream({ events }: { events: CallEvent[] }) {
               </div>
               <div className="min-w-0">
                 <div className="text-sm break-words">{event.message}</div>
-                <div className="mt-1 truncate text-xs text-muted-foreground">
-                  {[event.scenario_name, event.to_number]
-                    .filter(Boolean)
-                    .join(" ")}
+                <div className="mt-1 flex min-w-0 flex-wrap gap-2 text-xs text-muted-foreground">
+                  {event.scenario_name ? (
+                    <span>{event.scenario_name}</span>
+                  ) : null}
+                  <SensitiveValue
+                    value={event.to_number}
+                    reveal={revealSensitive}
+                    kind="phone"
+                    className="truncate"
+                  />
+                  <SensitiveValue
+                    value={event.call_connection_id}
+                    reveal={revealSensitive}
+                    kind="guid"
+                    className="truncate"
+                  />
                 </div>
               </div>
               <div className="text-sm whitespace-nowrap text-muted-foreground md:text-right">

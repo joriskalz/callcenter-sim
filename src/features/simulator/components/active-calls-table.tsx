@@ -9,9 +9,16 @@ import {
 
 import type { ActiveCall } from "../types"
 import { Section } from "./section"
+import { SensitiveValue } from "./sensitive-value"
 import { StatusBadge } from "./status-badge"
 
-export function ActiveCallsTable({ calls }: { calls: ActiveCall[] }) {
+export function ActiveCallsTable({
+  calls,
+  revealSensitive,
+}: {
+  calls: ActiveCall[]
+  revealSensitive: boolean
+}) {
   return (
     <Section title="Active Calls" meta={`${calls.length} active`}>
       <Table>
@@ -33,9 +40,19 @@ export function ActiveCallsTable({ calls }: { calls: ActiveCall[] }) {
                   <StatusBadge value={call.state} />
                 </TableCell>
                 <TableCell>{call.scenario_name}</TableCell>
-                <TableCell>{call.to_number}</TableCell>
+                <TableCell>
+                  <SensitiveValue
+                    value={call.to_number}
+                    reveal={revealSensitive}
+                    kind="phone"
+                  />
+                </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {call.call_connection_id}
+                  <SensitiveValue
+                    value={call.call_connection_id}
+                    reveal={revealSensitive}
+                    kind="guid"
+                  />
                 </TableCell>
                 <TableCell>{call.current_action}</TableCell>
                 <TableCell>{formatDate(call.incoming_call_time)}</TableCell>

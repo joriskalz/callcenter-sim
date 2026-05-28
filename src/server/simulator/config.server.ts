@@ -1,11 +1,19 @@
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 
-import type { ConfigIssue, Scenario } from "@/features/simulator/types"
+import {
+  inferScenarioLanguage,
+  localizedScenarioPreset,
+  scenarioLanguageOption,
+} from "@/features/simulator/scenario-language"
+import type {
+  ConfigIssue,
+  Scenario,
+  ScenarioEvent,
+  ScenarioLanguage,
+} from "@/features/simulator/types"
 
-const defaultMessage =
-  "Hallo, dies ist ein automatisierter Testkunde fuer Dynamics 365 Contact Center. " +
-  "Der Anruf wurde erfolgreich angenommen. Bitte fahren Sie mit dem Test fort."
+const minimumPlaybackSeconds = 45
 
 export type Settings = {
   appVersion: string
@@ -245,47 +253,77 @@ export function loadScenarios(
   }
 }
 
+export function saveScenarios(
+  scenarios: Record<string, unknown>,
+  settings = getSettings()
+): Record<string, Scenario> {
+  if (!settings.scenariosPath) {
+    throw new Error("SCENARIOS_PATH is not configured.")
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(scenarios).map(([number, scenario]) => [
+      normalizePhone(number),
+      normalizeScenario(scenario, settings),
+    ])
+  )
+  const path = resolve(settings.scenariosPath)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(
+    path,
+    `${JSON.stringify(scenariosForStorage(normalized), null, 2)}\n`
+  )
+  return normalized
+}
+
 export function normalizePhone(phoneNumber: string | null | undefined): string {
   return phoneNumber ? phoneNumber.split(/\s+/).join("") : ""
 }
 
 export function defaultScenario(settings = getSettings()): Scenario {
+  const preset = localizedScenarioPreset(
+    "default-answer",
+    inferScenarioLanguage(settings.defaultLocale)
+  )
   return {
     name: "default-answer",
     answer: true,
     answerDelaySeconds: 0,
-    message: defaultMessage,
-    locale: settings.defaultLocale,
-    voiceName: settings.defaultVoiceName,
-    hangupAfterSeconds: 10,
+    ...preset,
+    locale: settings.defaultLocale || preset.locale,
+    voiceName: settings.defaultVoiceName || preset.voiceName,
+    hangupAfterSeconds: 3,
   }
 }
 
 function defaultScenarios(settings: Settings): Record<string, Scenario> {
+  const language = inferScenarioLanguage(settings.defaultLocale)
+  const instant = localizedScenarioPreset("instant-answer", language)
+  const slow = localizedScenarioPreset("slow-answer", language)
+  const voicemail = localizedScenarioPreset("voicemail", language)
   return {
     "+491234000001": {
       name: "instant-answer",
       answer: true,
       answerDelaySeconds: 0,
-      message: "Hallo, ich nehme sofort ab.",
-      locale: "de-DE",
-      voiceName: "de-DE-KatjaNeural",
-      hangupAfterSeconds: 10,
+      ...instant,
+      hangupAfterSeconds: 3,
     },
     "+491234000002": {
       name: "slow-answer",
       answer: true,
       answerDelaySeconds: 8,
-      message: "Hallo, ich habe etwas spaeter abgenommen.",
-      locale: "de-DE",
-      voiceName: "de-DE-KatjaNeural",
-      hangupAfterSeconds: 15,
+      ...slow,
+      hangupAfterSeconds: 3,
     },
     "+491234000003": {
       name: "no-answer",
       answer: false,
       answerDelaySeconds: 0,
       message: null,
+      messages: [],
+      events: [],
+      language,
       locale: settings.defaultLocale,
       voiceName: settings.defaultVoiceName,
       hangupAfterSeconds: 10,
@@ -294,11 +332,8 @@ function defaultScenarios(settings: Settings): Record<string, Scenario> {
       name: "voicemail",
       answer: true,
       answerDelaySeconds: 3,
-      message:
-        "Sie haben die Voicemail erreicht. Bitte hinterlassen Sie eine Nachricht nach dem Ton.",
-      locale: "de-DE",
-      voiceName: "de-DE-KatjaNeural",
-      hangupAfterSeconds: 20,
+      ...voicemail,
+      hangupAfterSeconds: 3,
     },
   }
 }
@@ -306,18 +341,171 @@ function defaultScenarios(settings: Settings): Record<string, Scenario> {
 function normalizeScenario(value: unknown, settings: Settings): Scenario {
   const input =
     value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+  const name = String(input.name ?? "default-answer")
+  const answer = input.answer == null ? true : Boolean(input.answer)
+  const language = scenarioLanguage(input, settings)
+  const languageOption = scenarioLanguageOption(language)
+  const events = normalizeEvents(input, name, answer, language)
+  const messages = messagesFromEvents(events)
   return {
-    name: String(input.name ?? "default-answer"),
-    answer: input.answer == null ? true : Boolean(input.answer),
+    name,
+    answer,
     answerDelaySeconds: numberFromUnknown(input.answerDelaySeconds, 0),
-    message: input.message == null ? null : String(input.message),
-    locale: String(input.locale ?? settings.defaultLocale),
-    voiceName: input.voiceName == null ? null : String(input.voiceName),
+    message: messages.at(0)?.text ?? null,
+    messages,
+    events,
+    language,
+    locale: String(input.locale ?? languageOption.locale),
+    voiceName:
+      input.voiceName == null
+        ? languageOption.voiceName
+        : String(input.voiceName),
     hangupAfterSeconds:
       input.hangupAfterSeconds == null
         ? 10
         : numberFromUnknown(input.hangupAfterSeconds, 10),
   }
+}
+
+function scenarioLanguage(
+  input: Record<string, unknown>,
+  settings: Settings
+): ScenarioLanguage {
+  if (typeof input.language === "string") {
+    return scenarioLanguageOption(input.language).code
+  }
+  return inferScenarioLanguage(
+    typeof input.locale === "string" ? input.locale : settings.defaultLocale
+  )
+}
+
+function normalizeEvents(
+  input: Record<string, unknown>,
+  scenarioName: string,
+  answer: boolean,
+  language: ScenarioLanguage
+): ScenarioEvent[] {
+  if (!answer) return []
+
+  const events = Array.isArray(input.events)
+    ? input.events.map(normalizeEvent).filter((event) => event !== null)
+    : eventsFromMessages(input, scenarioName, language)
+
+  return ensureMinimumPlaybackSeconds(events)
+}
+
+function eventsFromMessages(
+  input: Record<string, unknown>,
+  scenarioName: string,
+  language: ScenarioLanguage
+): ScenarioEvent[] {
+  const rawMessages = Array.isArray(input.messages)
+    ? input.messages
+    : input.message == null
+      ? []
+      : [{ text: input.message }]
+
+  const messages = rawMessages.map(normalizeMessage).filter((item) => item.text)
+  if (!messages.length) {
+    return localizedScenarioPreset(scenarioName, language).events
+  }
+
+  return messages.flatMap((message) => [
+    { type: "tts" as const, text: message.text },
+    { type: "pause" as const, seconds: message.pauseAfterSeconds },
+  ])
+}
+
+function normalizeEvent(value: unknown): ScenarioEvent | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Record<string, unknown>
+  if (input.type === "pause") {
+    return {
+      type: "pause",
+      seconds: numberFromUnknown(input.seconds ?? input.pauseAfterSeconds, 0),
+    }
+  }
+
+  if (input.type === "tts" || input.text != null || input.message != null) {
+    const text = String(input.text ?? input.message ?? "")
+    return text ? { type: "tts", text } : null
+  }
+
+  return null
+}
+
+function normalizeMessage(value: unknown): Scenario["messages"][number] {
+  if (typeof value === "string") {
+    return { text: value, pauseAfterSeconds: 0 }
+  }
+
+  if (!value || typeof value !== "object") {
+    return { text: "", pauseAfterSeconds: 0 }
+  }
+
+  const input = value as Record<string, unknown>
+  return {
+    text: String(input.text ?? input.message ?? ""),
+    pauseAfterSeconds: numberFromUnknown(
+      input.pauseAfterSeconds ?? input.pauseSeconds,
+      0
+    ),
+  }
+}
+
+function ensureMinimumPlaybackSeconds(
+  events: ScenarioEvent[]
+): ScenarioEvent[] {
+  if (!events.length) return events
+
+  const pauseSeconds = events.reduce(
+    (total, event) => total + (event.type === "pause" ? event.seconds : 0),
+    0
+  )
+  if (pauseSeconds >= minimumPlaybackSeconds) return events
+
+  return [
+    ...events,
+    { type: "pause", seconds: minimumPlaybackSeconds - pauseSeconds },
+  ]
+}
+
+function messagesFromEvents(events: ScenarioEvent[]): Scenario["messages"] {
+  const messages: Scenario["messages"] = []
+
+  for (const event of events) {
+    if (event.type === "tts") {
+      messages.push({ text: event.text, pauseAfterSeconds: 0 })
+      continue
+    }
+
+    if (messages.length) {
+      messages[messages.length - 1].pauseAfterSeconds += event.seconds
+    }
+  }
+
+  return messages
+}
+
+function scenariosForStorage(
+  scenarios: Record<string, Scenario>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(scenarios).map(([phoneNumber, scenario]) => [
+      phoneNumber,
+      {
+        name: scenario.name,
+        answer: scenario.answer,
+        answerDelaySeconds: scenario.answerDelaySeconds,
+        language: scenario.language,
+        locale: scenario.locale,
+        voiceName: scenario.voiceName,
+        hangupAfterSeconds: scenario.hangupAfterSeconds,
+        events: scenario.events,
+      },
+    ])
+  )
 }
 
 function valueOrNull(value: string | undefined): string | null {

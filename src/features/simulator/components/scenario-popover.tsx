@@ -9,7 +9,14 @@ import type { Scenario } from "../types"
 
 export type ScenarioOption = Pick<
   Scenario,
-  "name" | "answer" | "answerDelaySeconds" | "hangupAfterSeconds" | "message"
+  | "name"
+  | "answer"
+  | "answerDelaySeconds"
+  | "hangupAfterSeconds"
+  | "message"
+  | "messages"
+  | "events"
+  | "language"
 >
 
 export function ScenarioPopover({
@@ -157,7 +164,13 @@ function scenarioDescription(scenario: ScenarioOption): string {
     scenario.hangupAfterSeconds == null
       ? "no automatic hangup"
       : `hangs up after ${formatSeconds(scenario.hangupAfterSeconds)}`
-  const message = scenario.message ? "plays TTS" : "no TTS message"
+  const messageCount = scenario.messages.length
+  const message =
+    messageCount > 1
+      ? `plays ${messageCount} TTS messages`
+      : scenario.message
+        ? "plays TTS"
+        : "no TTS message"
 
   return `${timing}, ${message}, ${hangup}.`
 }
@@ -181,6 +194,9 @@ function ensureScenarioOption(
       answerDelaySeconds: 0,
       hangupAfterSeconds: null,
       message: null,
+      messages: [],
+      events: [],
+      language: "de",
     },
     ...options,
   ]

@@ -1,7 +1,9 @@
+import { Popover } from "@base-ui/react/popover"
 import {
   ActivityIcon,
   AlertTriangleIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   EyeIcon,
   EyeOffIcon,
   XCircleIcon,
@@ -10,11 +12,60 @@ import * as React from "react"
 import type { ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 import type { AppStatus } from "../types"
 import { Section } from "./section"
+
+export function StatusSummaryPopover({
+  status,
+  isLoading,
+}: {
+  status: AppStatus | undefined
+  isLoading: boolean
+}) {
+  const health = statusHealth(status, isLoading)
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        aria-label="Open system status details"
+        className={cn(
+          buttonVariants({ variant: "outline" }),
+          "justify-start"
+        )}
+      >
+        <StatusIcon ok={health.tone === "success"} warning={health.tone === "warning"} />
+        <span>{health.label}</span>
+        {status ? (
+          <Badge variant="outline" className="ml-0.5 h-5 px-1.5 text-[11px]">
+            {status.active_call_count}
+          </Badge>
+        ) : null}
+        <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          side="bottom"
+          align="end"
+          sideOffset={6}
+          className="isolate z-50"
+        >
+          <Popover.Popup className="w-[min(28rem,calc(100vw-2rem))] origin-(--transform-origin) rounded-2xl bg-popover p-3 text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+            <Popover.Title className="text-sm font-semibold">
+              System status
+            </Popover.Title>
+            <Popover.Description className="mt-1 text-xs text-muted-foreground">
+              Current simulator, integration, and callback state.
+            </Popover.Description>
+            <StatusPopoverContent status={status} isLoading={isLoading} />
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
 
 export function StatusOverview({
   status,
@@ -112,6 +163,149 @@ export function StatusOverview({
         </div>
       </div>
     </Section>
+  )
+}
+
+function StatusPopoverContent({
+  status,
+  isLoading,
+}: {
+  status: AppStatus | undefined
+  isLoading: boolean
+}) {
+  if (isLoading && !status) {
+    return (
+      <div className="mt-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        Fetching status
+      </div>
+    )
+  }
+
+  if (!status) {
+    return (
+      <div className="mt-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        No status data available
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 grid gap-3">
+      <div className="grid grid-cols-3 divide-x rounded-lg border">
+        <CompactMetric label="App" value={status.status} />
+        <CompactMetric label="Version" value={status.version} />
+        <CompactMetric label="Calls" value={String(status.active_call_count)} />
+      </div>
+
+      <div className="grid gap-2">
+        <ServiceStatus
+          label="ACS"
+          ok={status.config.acs_configured}
+          okText="configured"
+          badText="missing"
+        />
+        <ServiceStatus
+          label="TTS"
+          ok={status.config.tts_configured}
+          okText="configured"
+          badText="missing"
+        />
+        <ServiceStatus
+          label="Dataverse"
+          ok={status.config.dataverse_configured}
+          okText="configured"
+          badText="sample data"
+          sampleOk
+        />
+        <ServiceStatus
+          label="Monitor auth"
+          ok={status.config.monitor_auth_configured}
+          okText="active"
+          badText="not set"
+        />
+        <ServiceStatus
+          label="Webhook secret"
+          ok={status.config.webhook_secret_configured}
+          okText="configured"
+          badText="not set"
+          sampleOk
+        />
+      </div>
+
+      <div className="grid gap-2 rounded-lg border p-3">
+        <DetailRow label="Scenarios" value={String(status.config.scenario_count)} />
+        <DetailRow label="Public base URL" value={status.config.public_base_url} />
+        <DetailRow
+          label="Deliveries"
+          value={
+            status.delivery_error ??
+            `${status.delivery_timelines.length} recent timeline rows`
+          }
+          tone={status.delivery_error ? "warning" : "neutral"}
+        />
+        <DetailRow
+          label="Recent errors"
+          value={String(status.recent_errors.length)}
+          tone={status.recent_errors.length ? "warning" : "neutral"}
+        />
+      </div>
+
+      <div className="rounded-lg border p-3">
+        <div className="mb-1 flex items-center gap-2">
+          <StatusIcon
+            ok={status.config.callback_url_valid}
+            warning={!status.config.callback_url_valid}
+          />
+          <div className="text-xs font-medium text-muted-foreground uppercase">
+            Callback URL
+          </div>
+        </div>
+        {status.config.callback_url_valid ? (
+          <CallbackUrlCopy url={status.config.callback_url} />
+        ) : (
+          <div className="text-sm leading-snug font-semibold break-words text-warning">
+            {status.config.callback_url_problem ?? "Callback URL invalid"}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CompactMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 p-3">
+      <div className="text-[11px] font-medium text-muted-foreground uppercase">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-sm font-semibold">{value}</div>
+    </div>
+  )
+}
+
+function DetailRow({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string
+  value: string
+  tone?: "neutral" | "warning"
+}) {
+  return (
+    <div className="grid gap-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
+      <div className="text-xs font-medium text-muted-foreground uppercase">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "min-w-0 break-words font-medium",
+          tone === "warning" && "text-warning"
+        )}
+      >
+        {value || "-"}
+      </div>
+    </div>
   )
 }
 
@@ -254,6 +448,19 @@ function textToneClass(tone: "success" | "warning" | "destructive") {
   if (tone === "success") return "text-success"
   if (tone === "warning") return "text-warning"
   return "text-destructive"
+}
+
+function statusHealth(
+  status: AppStatus | undefined,
+  isLoading: boolean
+): { label: string; tone: "success" | "warning" | "destructive" } {
+  if (isLoading && !status) return { label: "Status", tone: "warning" }
+  if (!status) return { label: "Status", tone: "destructive" }
+  if (status.config.config_issues.length || status.delivery_error) {
+    return { label: "Status", tone: "warning" }
+  }
+  if (status.recent_errors.length) return { label: "Status", tone: "warning" }
+  return { label: "Status", tone: "success" }
 }
 
 function maskCallbackUrl(value: string): string {
