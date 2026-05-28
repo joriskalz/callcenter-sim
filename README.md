@@ -258,13 +258,13 @@ winget install Microsoft.devtunnel
 3. Copy the printed HTTPS URL, for example:
 
    ```text
-   https://ffccqrrp-3000.euw.devtunnels.ms/
+   https://<your-tunnel-id>-3000.<region>.devtunnels.ms/
    ```
 
 4. Update `.env`.
 
    ```bash
-   PUBLIC_BASE_URL=https://ffccqrrp-3000.euw.devtunnels.ms
+   PUBLIC_BASE_URL=https://<your-tunnel-id>-3000.<region>.devtunnels.ms
    CALLBACK_PATH=/api/callbacks
    ```
 
