@@ -50,26 +50,28 @@ export function ContactsTable({
 }) {
   const [showPhoneNumbers, setShowPhoneNumbers] = React.useState(false)
   const randomizeAllMutation = useRandomizeAllContactAddressesMutation(apiKey)
-  const filteredContacts = contacts.filter((contact) => {
-    if (
-      statusFilter !== "all" &&
-      contact.new_ccsim_reachabilitystatus !== statusFilter
-    )
-      return false
-    const query = search.trim().toLowerCase()
-    if (!query) return true
-    return [
-      contact.fullname,
-      contact.telephone1,
-      contact.address1_line1,
-      contact.address1_city,
-      contact.address1_postalcode,
-      contact.address1_country,
-      contact.new_ccsim_scenario,
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query))
-  })
+  const filteredContacts = [...contacts]
+    .sort(compareContactsByName)
+    .filter((contact) => {
+      if (
+        statusFilter !== "all" &&
+        contact.new_ccsim_reachabilitystatus !== statusFilter
+      )
+        return false
+      const query = search.trim().toLowerCase()
+      if (!query) return true
+      return [
+        contact.fullname,
+        contact.telephone1,
+        contact.address1_line1,
+        contact.address1_city,
+        contact.address1_postalcode,
+        contact.address1_country,
+        contact.new_ccsim_scenario,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    })
 
   return (
     <Section
@@ -459,4 +461,11 @@ async function copyText(value: string): Promise<void> {
   } finally {
     textArea.remove()
   }
+}
+
+function compareContactsByName(left: Contact, right: Contact): number {
+  return left.fullname.localeCompare(right.fullname, undefined, {
+    sensitivity: "base",
+    numeric: true,
+  })
 }

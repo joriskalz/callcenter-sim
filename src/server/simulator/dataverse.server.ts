@@ -112,7 +112,7 @@ export async function listContacts(): Promise<Contact[]> {
     value?: Array<Record<string, unknown>>
   }>(
     "GET",
-    `/api/data/v9.2/contacts?$select=${select}&$filter=${encodeURIComponent(filter)}`
+    `/api/data/v9.2/contacts?$select=${select}&$filter=${encodeURIComponent(filter)}&$orderby=fullname asc`
   )
   const contacts = (response.value ?? []).map((item) =>
     contactFromDataverse(item, settings)
@@ -529,11 +529,20 @@ function sampleContacts(settings: Settings): Contact[] {
       readFileSync(resolve(settings.sampleContactsPath ?? ""), "utf8")
     )
     return Array.isArray(payload)
-      ? payload.map(normalizeContact)
+      ? sortContactsByName(payload.map(normalizeContact))
       : [fallbackContact()]
   } catch {
     return [fallbackContact()]
   }
+}
+
+function sortContactsByName(contacts: Contact[]): Contact[] {
+  return [...contacts].sort((left, right) =>
+    left.fullname.localeCompare(right.fullname, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    })
+  )
 }
 
 function normalizeContact(value: unknown): Contact {
