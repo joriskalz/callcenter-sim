@@ -10,6 +10,7 @@ import {
   handleCallbackPayload,
   handleIncomingCallPayload,
   healthStatus,
+  patchStatus,
   randomizeAddress,
   randomizeAllAddresses,
 } from "./service.server"
@@ -59,6 +60,21 @@ describe("simulator service", () => {
 
     expect(result.updated.length).toBeGreaterThan(0)
     expect(result.updated.every((item) => item.appliedAddress.city)).toBe(true)
+  })
+
+  it("allows updating last-call fields", async () => {
+    const result = await patchStatus("sample-001", {
+      new_ccsim_lastcallresult: "IncomingCall",
+      new_ccsim_lastcallat: "2026-05-28T05:30:00.000Z",
+    })
+
+    expect(result).toEqual({
+      contactid: "sample-001",
+      updated: {
+        new_ccsim_lastcallresult: "IncomingCall",
+        new_ccsim_lastcallat: "2026-05-28T05:30:00.000Z",
+      },
+    })
   })
 
   it("answers Event Grid validation requests", async () => {

@@ -95,7 +95,9 @@ export async function patchStatus(
   if (
     patch.new_ccsim_enabled == null &&
     patch.new_ccsim_reachabilitystatus == null &&
-    patch.new_ccsim_scenario === undefined
+    patch.new_ccsim_scenario === undefined &&
+    patch.new_ccsim_lastcallresult === undefined &&
+    patch.new_ccsim_lastcallat === undefined
   ) {
     throw new Error("At least one simulator status field is required.")
   }
@@ -195,6 +197,7 @@ async function handleIncomingCallEvent(
     toNumber
   )
   const operationContext = `ccsim:${scenario.name}:${randomUUID()}`
+  const incomingCallTime = utcNow()
 
   const call: ActiveCall = {
     server_call_id: serverCallId,
@@ -205,7 +208,7 @@ async function handleIncomingCallEvent(
     scenario_name: scenario.name,
     state: "incoming",
     current_action: "incoming call received",
-    incoming_call_time: utcNow(),
+    incoming_call_time: incomingCallTime,
     answer_time: null,
     call_connected_time: null,
     play_started_time: null,
@@ -229,6 +232,10 @@ async function handleIncomingCallEvent(
       error: null,
     })
   )
+
+  if (contact) {
+    void recordContactIncomingCall(contact.contactid, incomingCallTime, call)
+  }
 
   if (reachabilityStatus === "busy") {
     rejectCallByStatus(incomingCallContext, call, "busy")
@@ -277,6 +284,28 @@ async function handleIncomingCallEvent(
   call.current_action = "answer scheduled"
   simulatorState.upsertCall(call)
   void answerAfterDelay(incomingCallContext, scenario, operationContext)
+}
+
+async function recordContactIncomingCall(
+  contactId: string,
+  incomingCallTime: string,
+  call: ActiveCall
+): Promise<void> {
+  try {
+    await patchContactStatus(contactId, {
+      new_ccsim_lastcallresult: "IncomingCall",
+      new_ccsim_lastcallat: incomingCallTime,
+    })
+  } catch (error) {
+    simulatorState.addEvent(
+      eventFromCall(
+        "Dataverse.LastCall.Error",
+        "Updating contact last-call fields failed.",
+        call,
+        errorMessage(error)
+      )
+    )
+  }
 }
 
 function scenarioForIncomingCall(

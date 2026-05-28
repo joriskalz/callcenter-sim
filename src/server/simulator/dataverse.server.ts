@@ -142,7 +142,9 @@ export async function patchContactStatus(
   if (
     patch.new_ccsim_enabled == null &&
     patch.new_ccsim_reachabilitystatus == null &&
-    patch.new_ccsim_scenario === undefined
+    patch.new_ccsim_scenario === undefined &&
+    patch.new_ccsim_lastcallresult === undefined &&
+    patch.new_ccsim_lastcallat === undefined
   ) {
     throw new Error("At least one simulator status field is required.")
   }
@@ -714,6 +716,10 @@ function statusPayloadFromPatch(
   }
   if (patch.new_ccsim_scenario !== undefined)
     payload[`${prefix}_ccsim_scenario`] = patch.new_ccsim_scenario
+  if (patch.new_ccsim_lastcallresult !== undefined)
+    payload[`${prefix}_ccsim_lastcallresult`] = patch.new_ccsim_lastcallresult
+  if (patch.new_ccsim_lastcallat !== undefined)
+    payload[`${prefix}_ccsim_lastcallat`] = patch.new_ccsim_lastcallat
   return payload
 }
 

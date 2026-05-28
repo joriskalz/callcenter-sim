@@ -52,6 +52,8 @@ export type ContactStatusPatch = {
   new_ccsim_enabled?: boolean | null
   new_ccsim_reachabilitystatus?: ReachabilityStatus | null
   new_ccsim_scenario?: string | null
+  new_ccsim_lastcallresult?: string | null
+  new_ccsim_lastcallat?: string | null
 }
 
 export type ConsentValue = "not_set" | "opted_in" | "opted_out"
