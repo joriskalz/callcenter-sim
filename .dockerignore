@@ -1,0 +1,16 @@
+.git
+.tanstack
+.vscode
+dist
+.output
+node_modules
+.env
+.env.*
+!.env.example
+.DS_Store
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage
+.playwright-cli
