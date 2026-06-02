@@ -76,6 +76,38 @@ export type Contact = {
   consent: ContactConsent | null
 }
 
+export type ProactiveEngagementConfig = {
+  id: string
+  name: string
+}
+
+export type StartProactiveExperimentInput = {
+  configId: string
+  contactIds: string[]
+}
+
+export type ProactiveExperimentDeliveryResult = {
+  contactid: string
+  fullname: string
+  telephone1: string | null
+  deliveryId: string | null
+  error: string | null
+}
+
+export type StartProactiveExperimentResult = {
+  requested: number
+  created: ProactiveExperimentDeliveryResult[]
+  failed: ProactiveExperimentDeliveryResult[]
+}
+
+export type DeleteProactiveDeliveriesResult = {
+  deleted: number
+  failed: Array<{
+    id: string
+    error: string
+  }>
+}
+
 export type ContactStatusPatch = {
   new_ccsim_enabled?: boolean | null
   new_ccsim_reachabilitystatus?: ReachabilityStatus | null

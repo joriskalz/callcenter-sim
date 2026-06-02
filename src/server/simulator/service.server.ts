@@ -8,11 +8,14 @@ import type {
   ContactAddressResult,
   ContactConsentPatch,
   ContactConsentResult,
+  DeleteProactiveDeliveriesResult,
   ContactStatusPatch,
   DeliveryCorrelation,
   DeliveryTimeline,
   PatchStatusResult,
   ProactiveDelivery,
+  ProactiveEngagementConfig,
+  StartProactiveExperimentResult,
   ReachabilityStatus,
   Scenario,
   SetupStatus,
@@ -30,7 +33,10 @@ import {
 } from "./config.server"
 import {
   contactByPhoneNumber,
+  createProactiveVoiceDelivery,
+  deleteRecentProactiveDeliveries,
   listContacts,
+  listProactiveEngagementConfigs,
   listRecentProactiveDeliveries,
   patchContactStatus,
   randomizeAllContactAddresses,
@@ -128,6 +134,118 @@ export async function monitorStatus(): Promise<AppStatus> {
 
 export async function contacts() {
   return listContacts()
+}
+
+export async function proactiveEngagementConfigs(): Promise<
+  ProactiveEngagementConfig[]
+> {
+  return listProactiveEngagementConfigs()
+}
+
+export async function proactiveDeliveries(): Promise<ProactiveDelivery[]> {
+  return listRecentProactiveDeliveries(50)
+}
+
+export async function deleteProactiveDeliveries(): Promise<DeleteProactiveDeliveriesResult> {
+  return deleteRecentProactiveDeliveries()
+}
+
+export async function startProactiveExperiment(
+  payload: unknown
+): Promise<StartProactiveExperimentResult> {
+  const input = startProactiveExperimentInput(payload)
+
+  if (!input.configId.trim()) {
+    throw new Error("Select a proactive engagement config.")
+  }
+  if (!Array.isArray(input.contactIds) || !input.contactIds.length) {
+    throw new Error("Select at least one contact.")
+  }
+
+  const selectedIds = new Set(input.contactIds)
+  const selectedContacts = (await listContacts()).filter((contact) =>
+    selectedIds.has(contact.contactid)
+  )
+  const result: StartProactiveExperimentResult = {
+    requested: input.contactIds.length,
+    created: [],
+    failed: [],
+  }
+
+  for (const contact of selectedContacts) {
+    if (!contact.telephone1) {
+      result.failed.push({
+        contactid: contact.contactid,
+        fullname: contact.fullname,
+        telephone1: contact.telephone1,
+        deliveryId: null,
+        error: "Contact does not have telephone1.",
+      })
+      continue
+    }
+
+    try {
+      const response = await createProactiveVoiceDelivery({
+        configId: input.configId,
+        contactId: contact.contactid,
+        phoneNumber: contact.telephone1,
+        inputAttributes: {
+          source: "call-simulator",
+          fullName: contact.fullname,
+        },
+      })
+
+      result.created.push({
+        contactid: contact.contactid,
+        fullname: contact.fullname,
+        telephone1: contact.telephone1,
+        deliveryId: response.DeliveryId ?? null,
+        error: null,
+      })
+    } catch (error) {
+      result.failed.push({
+        contactid: contact.contactid,
+        fullname: contact.fullname,
+        telephone1: contact.telephone1,
+        deliveryId: null,
+        error: errorMessage(error),
+      })
+    }
+  }
+
+  for (const missingContactId of input.contactIds.filter(
+    (contactId) =>
+      !selectedContacts.some((contact) => contact.contactid === contactId)
+  )) {
+    result.failed.push({
+      contactid: missingContactId,
+      fullname: "Unknown contact",
+      telephone1: null,
+      deliveryId: null,
+      error: "Contact was not found.",
+    })
+  }
+
+  return result
+}
+
+function startProactiveExperimentInput(payload: unknown): {
+  configId: string
+  contactIds: string[]
+} {
+  const input =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {}
+
+  return {
+    configId: typeof input.configId === "string" ? input.configId : "",
+    contactIds: Array.isArray(input.contactIds)
+      ? input.contactIds.filter(
+          (contactId): contactId is string => typeof contactId === "string"
+        )
+      : [],
+  }
 }
 
 export async function patchStatus(

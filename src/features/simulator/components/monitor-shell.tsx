@@ -2,6 +2,7 @@ import {
   ActivityIcon,
   AlertTriangleIcon,
   BookOpenTextIcon,
+  PhoneCallIcon,
   RefreshCwIcon,
   SearchIcon,
   ShieldIcon,
@@ -24,28 +25,36 @@ import {
   useMonitorContactsQuery,
   useMonitorScenariosQuery,
   useMonitorStatusQuery,
+  useDeleteProactiveDeliveriesMutation,
+  useProactiveDeliveriesQuery,
+  useProactiveEngagementConfigsQuery,
   useSaveScenariosMutation,
   useSetupStatusQuery,
+  useStartProactiveExperimentMutation,
 } from "../queries"
 import { reachabilityStatuses } from "../types"
-import type { ConfigIssue, ReachabilityStatus, Scenario } from "../types"
+import type {
+  ConfigIssue,
+  ReachabilityStatus,
+  Scenario,
+  StartProactiveExperimentResult,
+} from "../types"
 import { ActiveCallsTable } from "./active-calls-table"
 import { ConfigHelpPanel } from "./config-help-panel"
 import { ContactsTable } from "./contacts-table"
 import { DeliveryTimelineBoard } from "./delivery-timeline"
 import { EventStream } from "./event-stream"
+import { ProactiveExperimentTab } from "./proactive-experiment-tab"
 import { ScenarioEditor } from "./scenario-editor"
 import { StatusOverview, StatusSummaryPopover } from "./status-overview"
 
 const monitorApiKeyStorageKey = "callcenter-sim:monitor-api-key"
 
-type MonitorTab = "contacts" | "activity" | "scenarios"
+type MonitorTab = "contacts" | "proactive" | "activity" | "scenarios"
 
 export function MonitorShell() {
-  const [apiKey, setApiKey] = React.useState(() => {
-    if (typeof window === "undefined") return ""
-    return window.localStorage.getItem(monitorApiKeyStorageKey) ?? ""
-  })
+  const [apiKey, setApiKey] = React.useState("")
+  const [apiKeyLoaded, setApiKeyLoaded] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<
     ReachabilityStatus | "all"
   >("all")
@@ -54,22 +63,40 @@ export function MonitorShell() {
   const [revealSensitive, setRevealSensitive] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<MonitorTab>("contacts")
   const [lastRefresh, setLastRefresh] = React.useState<string | null>(null)
+  const [lastProactiveResult, setLastProactiveResult] =
+    React.useState<StartProactiveExperimentResult | null>(null)
   const hasMonitorKey = Boolean(apiKey)
 
   const statusQuery = useMonitorStatusQuery(apiKey, autoRefresh)
   const contactsQuery = useMonitorContactsQuery(apiKey, autoRefresh)
   const scenariosQuery = useMonitorScenariosQuery(apiKey)
+  const proactiveConfigsQuery = useProactiveEngagementConfigsQuery(apiKey)
+  const proactiveDeliveriesQuery = useProactiveDeliveriesQuery(
+    apiKey,
+    autoRefresh
+  )
   const saveScenariosMutation = useSaveScenariosMutation(apiKey)
+  const startProactiveExperimentMutation =
+    useStartProactiveExperimentMutation(apiKey)
+  const deleteProactiveDeliveriesMutation =
+    useDeleteProactiveDeliveriesMutation(apiKey)
   const setupQuery = useSetupStatusQuery()
 
   React.useEffect(() => {
+    setApiKey(window.localStorage.getItem(monitorApiKeyStorageKey) ?? "")
+    setApiKeyLoaded(true)
+  }, [])
+
+  React.useEffect(() => {
+    if (!apiKeyLoaded) return
+
     if (!apiKey) {
       window.localStorage.removeItem(monitorApiKeyStorageKey)
       return
     }
 
     window.localStorage.setItem(monitorApiKeyStorageKey, apiKey)
-  }, [apiKey])
+  }, [apiKey, apiKeyLoaded])
 
   React.useEffect(() => {
     if (statusQuery.data && contactsQuery.data) {
@@ -84,8 +111,28 @@ export function MonitorShell() {
       statusQuery.refetch(),
       contactsQuery.refetch(),
       scenariosQuery.refetch(),
+      proactiveConfigsQuery.refetch(),
+      proactiveDeliveriesQuery.refetch(),
     ])
     setLastRefresh(new Date().toLocaleTimeString())
+  }
+
+  const startProactiveExperiment = (input: {
+    configId: string
+    contactIds: string[]
+  }) => {
+    startProactiveExperimentMutation.mutate(input, {
+      onSuccess: (result) => setLastProactiveResult(result),
+    })
+  }
+
+  const deleteProactiveDeliveries = () => {
+    const confirmed = window.confirm(
+      "Delete all proactive delivery rows from Dataverse?"
+    )
+    if (!confirmed) return
+
+    deleteProactiveDeliveriesMutation.mutate()
   }
 
   const configIssues = React.useMemo(
@@ -217,6 +264,7 @@ export function MonitorShell() {
               eventCount={statusQuery.data?.recent_events.length ?? 0}
               timelineCount={statusQuery.data?.delivery_timelines.length ?? 0}
               scenarioCount={scenarioOptions.length}
+              proactiveConfigCount={proactiveConfigsQuery.data?.length ?? 0}
               onChange={setActiveTab}
             />
 
@@ -242,6 +290,36 @@ export function MonitorShell() {
                 isLoading={contactsQuery.isPending}
                 revealSensitive={revealSensitive}
                 onRevealSensitiveChange={setRevealSensitive}
+              />
+            </div>
+
+            <div
+              role="tabpanel"
+              id="monitor-tabpanel-proactive"
+              aria-labelledby="monitor-tab-proactive"
+              hidden={activeTab !== "proactive"}
+              className="grid gap-4"
+            >
+              <ProactiveExperimentTab
+                configs={proactiveConfigsQuery.data ?? []}
+                contacts={contactsQuery.data ?? []}
+                deliveries={proactiveDeliveriesQuery.data ?? []}
+                activeCalls={statusQuery.data?.active_calls ?? []}
+                events={statusQuery.data?.recent_events ?? []}
+                isConfigsLoading={proactiveConfigsQuery.isPending}
+                isContactsLoading={contactsQuery.isPending}
+                isDeliveriesLoading={proactiveDeliveriesQuery.isPending}
+                isStarting={startProactiveExperimentMutation.isPending}
+                isDeleting={deleteProactiveDeliveriesMutation.isPending}
+                startError={startProactiveExperimentMutation.error}
+                deleteError={deleteProactiveDeliveriesMutation.error}
+                lastResult={lastProactiveResult}
+                revealSensitive={revealSensitive}
+                onStart={startProactiveExperiment}
+                onRefreshDeliveries={() =>
+                  void proactiveDeliveriesQuery.refetch()
+                }
+                onDeleteDeliveries={deleteProactiveDeliveries}
               />
             </div>
 
@@ -297,6 +375,7 @@ function MonitorTabs({
   activeCallsCount,
   eventCount,
   scenarioCount,
+  proactiveConfigCount,
   onChange,
 }: {
   activeTab: MonitorTab
@@ -305,6 +384,7 @@ function MonitorTabs({
   activeCallsCount: number
   eventCount: number
   scenarioCount: number
+  proactiveConfigCount: number
   onChange: (tab: MonitorTab) => void
 }) {
   const tabs: Array<{
@@ -318,6 +398,12 @@ function MonitorTabs({
       label: "Contacts",
       meta: `${contactsCount} rows`,
       icon: <UsersIcon />,
+    },
+    {
+      id: "proactive",
+      label: "Proactive",
+      meta: `${proactiveConfigCount} configs`,
+      icon: <PhoneCallIcon />,
     },
     {
       id: "activity",
@@ -337,7 +423,7 @@ function MonitorTabs({
     <div
       role="tablist"
       aria-label="Monitor sections"
-      className="grid gap-2 rounded-lg border bg-card p-1 md:grid-cols-3"
+      className="grid gap-2 rounded-lg border bg-card p-1 md:grid-cols-4"
     >
       {tabs.map((tab) => {
         const selected = activeTab === tab.id
@@ -351,7 +437,7 @@ function MonitorTabs({
             aria-controls={`monitor-tabpanel-${tab.id}`}
             aria-selected={selected}
             className={[
-              "flex min-h-14 items-center gap-3 rounded-md px-3 py-2 text-left outline-none transition-colors",
+              "flex min-h-14 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors outline-none",
               "focus-visible:ring-[3px] focus-visible:ring-ring/50",
               selected
                 ? "bg-background text-foreground shadow-xs"

@@ -7,10 +7,15 @@ import type {
   ContactAddressResult,
   ContactConsentPatch,
   ContactConsentResult,
+  DeleteProactiveDeliveriesResult,
   ContactStatusPatch,
   PatchStatusResult,
+  ProactiveDelivery,
+  ProactiveEngagementConfig,
   Scenario,
   SetupStatus,
+  StartProactiveExperimentInput,
+  StartProactiveExperimentResult,
 } from "./types"
 
 const simulatorKeys = {
@@ -20,6 +25,10 @@ const simulatorKeys = {
     [...simulatorKeys.all, "contacts", apiKey] as const,
   scenarios: (apiKey: string) =>
     [...simulatorKeys.all, "scenarios", apiKey] as const,
+  proactiveConfigs: (apiKey: string) =>
+    [...simulatorKeys.all, "proactive-configs", apiKey] as const,
+  proactiveDeliveries: (apiKey: string) =>
+    [...simulatorKeys.all, "proactive-deliveries", apiKey] as const,
   setup: () => [...simulatorKeys.all, "setup"] as const,
 }
 
@@ -62,6 +71,87 @@ export function useMonitorScenariosQuery(apiKey: string) {
       fetchMonitorJson<Record<string, Scenario>>("/api/scenarios", apiKey),
     enabled: Boolean(apiKey),
     staleTime: 60_000,
+  })
+}
+
+export function useProactiveEngagementConfigsQuery(apiKey: string) {
+  return useQuery({
+    queryKey: simulatorKeys.proactiveConfigs(apiKey),
+    queryFn: () =>
+      fetchMonitorJson<ProactiveEngagementConfig[]>(
+        "/api/proactive-engagement/configs",
+        apiKey
+      ),
+    enabled: Boolean(apiKey),
+    staleTime: 60_000,
+  })
+}
+
+export function useProactiveDeliveriesQuery(
+  apiKey: string,
+  autoRefresh: boolean
+) {
+  const enabled = Boolean(apiKey)
+
+  return useQuery({
+    queryKey: simulatorKeys.proactiveDeliveries(apiKey),
+    queryFn: () =>
+      fetchMonitorJson<ProactiveDelivery[]>(
+        "/api/proactive-engagement/deliveries",
+        apiKey
+      ),
+    enabled,
+    refetchInterval: enabled && autoRefresh ? 3000 : false,
+    refetchIntervalInBackground: true,
+  })
+}
+
+export function useStartProactiveExperimentMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: StartProactiveExperimentInput) =>
+      fetchMonitorJson<StartProactiveExperimentResult>(
+        "/api/proactive-engagement/deliveries",
+        apiKey,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        }
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: simulatorKeys.status(apiKey),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: simulatorKeys.proactiveDeliveries(apiKey),
+        }),
+      ])
+    },
+  })
+}
+
+export function useDeleteProactiveDeliveriesMutation(apiKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () =>
+      fetchMonitorJson<DeleteProactiveDeliveriesResult>(
+        "/api/proactive-engagement/deliveries",
+        apiKey,
+        { method: "DELETE" }
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: simulatorKeys.status(apiKey),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: simulatorKeys.proactiveDeliveries(apiKey),
+        }),
+      ])
+    },
   })
 }
 

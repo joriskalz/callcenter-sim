@@ -12,8 +12,10 @@ import type {
   ContactStatusPatch,
   ConsentValue,
   DataverseRecordLink,
+  DeleteProactiveDeliveriesResult,
   PatchStatusResult,
   ProactiveDelivery,
+  ProactiveEngagementConfig,
   ReachabilityStatus,
 } from "@/features/simulator/types"
 
@@ -297,9 +299,65 @@ export async function randomizeAllContactAddresses(): Promise<ContactAddressBatc
   return { updated }
 }
 
-export async function listRecentProactiveDeliveries(): Promise<
-  ProactiveDelivery[]
+export async function listProactiveEngagementConfigs(): Promise<
+  ProactiveEngagementConfig[]
 > {
+  const settings = getSettings()
+  if (!dataverseConfigured(settings)) return []
+
+  const response = await requestDataverse<{
+    value?: Array<Record<string, unknown>>
+  }>(
+    "GET",
+    "/api/data/v9.2/msdyn_proactive_engagement_configs?$select=msdyn_proactive_engagement_configid,msdyn_name&$orderby=msdyn_name asc"
+  )
+
+  return (response.value ?? [])
+    .map((item) => ({
+      id: String(item.msdyn_proactive_engagement_configid ?? ""),
+      name: String(item.msdyn_name ?? "Unnamed config"),
+    }))
+    .filter((config) => config.id)
+}
+
+export async function createProactiveVoiceDelivery({
+  configId,
+  contactId,
+  phoneNumber,
+  inputAttributes = {},
+  windows,
+}: {
+  configId: string
+  contactId: string
+  phoneNumber: string
+  inputAttributes?: Record<string, unknown>
+  windows?: Array<{ Start: string; End: string }>
+}): Promise<{ DeliveryId?: string }> {
+  const settings = getSettings()
+  if (!dataverseConfigured(settings)) {
+    throw new Error("Dataverse is not configured.")
+  }
+
+  const payload: Record<string, unknown> = {
+    ApiVersion: "1.0",
+    ProactiveEngagementConfigId: cleanGuid(configId),
+    DestinationPhoneNumber: phoneNumber,
+    ContactId: cleanGuid(contactId),
+    InputAttributes: JSON.stringify(inputAttributes),
+  }
+
+  if (windows?.length) payload.Windows = windows
+
+  return requestDataverse<{ DeliveryId?: string }>(
+    "POST",
+    "/api/data/v9.2/CCaaS_CreateProactiveVoiceDelivery",
+    payload
+  )
+}
+
+export async function listRecentProactiveDeliveries(
+  top = 25
+): Promise<ProactiveDelivery[]> {
   const settings = getSettings()
   if (!dataverseConfigured(settings)) return []
 
@@ -309,41 +367,116 @@ export async function listRecentProactiveDeliveries(): Promise<
     value?: Array<Record<string, unknown>>
   }>(
     "GET",
-    `/api/data/v9.2/${deliveryEntitySetName}?$select=${select}&$orderby=modifiedon desc&$top=25`
+    `/api/data/v9.2/${deliveryEntitySetName}?$select=${select}&$orderby=createdon desc&$top=${top}`
   )
 
   const deliveries = (response.value ?? []).map(proactiveDeliveryFromDataverse)
   return Promise.all(deliveries.map(enrichProactiveDelivery))
 }
 
+export async function deleteProactiveDelivery(
+  proactiveDeliveryId: string
+): Promise<void> {
+  const deliveryEntitySetName = await proactiveDeliveryEntitySetName()
+  await requestDataverse(
+    "DELETE",
+    `/api/data/v9.2/${deliveryEntitySetName}(${cleanGuid(proactiveDeliveryId)})`,
+    undefined,
+    { "If-Match": "*" }
+  )
+}
+
+export async function deleteRecentProactiveDeliveries(): Promise<DeleteProactiveDeliveriesResult> {
+  const settings = getSettings()
+  if (!dataverseConfigured(settings)) {
+    throw new Error("Dataverse is not configured.")
+  }
+
+  const deliveryEntitySetName = await proactiveDeliveryEntitySetName()
+  const ids: string[] = []
+  let path: string | null =
+    `/api/data/v9.2/${deliveryEntitySetName}?$select=msdyn_proactive_deliveryid&$orderby=createdon desc&$top=500`
+
+  while (path) {
+    type DeliveryIdPage = {
+      value?: Array<Record<string, unknown>>
+      "@odata.nextLink"?: string
+    }
+    const response: DeliveryIdPage = await requestDataverse<DeliveryIdPage>(
+      "GET",
+      path
+    )
+
+    ids.push(
+      ...((response.value ?? [])
+        .map((item) => stringOrNull(item.msdyn_proactive_deliveryid))
+        .filter(Boolean) as string[])
+    )
+    path = response["@odata.nextLink"] ?? null
+  }
+
+  const failed: DeleteProactiveDeliveriesResult["failed"] = []
+  let deleted = 0
+
+  for (const id of ids) {
+    try {
+      await deleteProactiveDelivery(id)
+      deleted += 1
+    } catch (error) {
+      failed.push({ id, error: errorMessage(error) })
+    }
+  }
+
+  return { deleted, failed }
+}
+
 async function requestDataverse<T>(
   method: string,
   path: string,
-  jsonPayload?: Record<string, unknown>
+  jsonPayload?: Record<string, unknown>,
+  extraHeaders: Record<string, string> = {}
 ): Promise<T> {
   const settings = getSettings()
   const baseUrl = settings.dataverseUrl?.replace(/\/+$/, "")
   if (!baseUrl) throw new Error("Dataverse URL is not configured.")
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${await token()}`,
-      Accept: "application/json",
-      "OData-MaxVersion": "4.0",
-      "OData-Version": "4.0",
-      ...(jsonPayload ? { "Content-Type": "application/json" } : {}),
-    },
-    body: jsonPayload ? JSON.stringify(jsonPayload) : undefined,
-  })
+  const response = await fetch(
+    path.startsWith("http") ? path : `${baseUrl}${path}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bearer ${await token()}`,
+        Accept: "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0",
+        ...(jsonPayload ? { "Content-Type": "application/json" } : {}),
+        ...extraHeaders,
+      },
+      body: jsonPayload ? JSON.stringify(jsonPayload) : undefined,
+    }
+  )
 
   if (!response.ok) {
+    const detail = await dataverseErrorDetail(response)
     throw new Error(
-      `Dataverse request failed: ${response.status} ${response.statusText}`
+      `Dataverse request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`
     )
   }
   if (response.status === 204) return {} as T
   return (await response.json()) as T
+}
+
+async function dataverseErrorDetail(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as Record<string, unknown>
+    const error =
+      payload.error && typeof payload.error === "object"
+        ? (payload.error as Record<string, unknown>)
+        : null
+    return String(error?.message ?? payload.message ?? "")
+  } catch {
+    return ""
+  }
 }
 
 async function proactiveDeliveryEntitySetName(): Promise<string> {
@@ -1016,4 +1149,8 @@ function guidOrNull(value: string | null): string | null {
 
 function odataString(value: string): string {
   return value.replaceAll("'", "''")
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
