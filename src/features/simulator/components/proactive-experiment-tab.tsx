@@ -118,6 +118,7 @@ export function ProactiveExperimentTab({
       <Section
         title="Proactive Engagement Experiment"
         meta={`${selectedCallableContacts.length} selected`}
+        className="overflow-visible"
       >
         <div className="grid gap-4 p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(14rem,22rem)_minmax(0,1fr)]">
