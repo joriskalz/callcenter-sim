@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -705,7 +704,7 @@ function EventGraph({
                       </div>
                     </div>
 
-                    {previous && graphMode === "proportional" ? (
+                    {index > 0 && graphMode === "proportional" ? (
                       <SegmentLabel
                         leftPercent={event.left}
                         previousLeftPercent={previous.left}

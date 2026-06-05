@@ -29,8 +29,9 @@ export function EventStream({
           visible.map((event, index) => {
             const previous = visible[index - 1]
             const isDuplicateType =
-              previous?.event_type === event.event_type &&
-              previous?.operation_context === event.operation_context
+              index > 0 &&
+              previous.event_type === event.event_type &&
+              previous.operation_context === event.operation_context
 
             return (
               <div
