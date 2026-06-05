@@ -61,6 +61,16 @@ import {
 } from "./scenarios.server"
 import { callEvent, simulatorState, utcNow } from "./state.server"
 
+/** Max simulator events surfaced per timeline. */
+const maxTimelineEvents = 12
+
+/**
+ * When attaching context-less callbacks (e.g. ParticipantsUpdated, which
+ * sometimes arrive without operationContext) to a chosen attempt, allow this
+ * much slack (ms) on either side of the attempt's window.
+ */
+const contextlessWindowMs = 2000
+
 export function healthStatus(): Record<string, unknown> {
   const settings = getSettings()
   return {
@@ -671,9 +681,13 @@ function handleCallbackEvent(event: Record<string, unknown>): void {
       message: `Callback received: ${callbackType}.`,
       server_call_id: serverCallId,
       call_connection_id: callConnectionId,
-      operation_context: operationContext,
-      scenario_name: null,
-      to_number: null,
+      // Preserve operationContext when ACS provides it so the timeline can
+      // group callbacks with the call attempt they belong to. Fall back to
+      // the matched call's context for callbacks (e.g. ParticipantsUpdated)
+      // that omit it.
+      operation_context: operationContext ?? call?.operation_context ?? null,
+      scenario_name: call?.scenario_name ?? null,
+      to_number: call?.to_number ?? null,
       error,
       raw: error ? JSON.stringify({ data }) : null,
     })
@@ -755,6 +769,10 @@ function eventFromCall(
   })
 }
 
+/* -------------------------------------------------------------------------- */
+/* Delivery ↔ call/event correlation                                          */
+/* -------------------------------------------------------------------------- */
+
 export function buildDeliveryTimelines(
   deliveries: ProactiveDelivery[],
   calls: ActiveCall[],
@@ -763,34 +781,10 @@ export function buildDeliveryTimelines(
   return deliveries.map((delivery) => {
     const match = deliveryCallMatch(delivery, calls)
     const toNumber = delivery.to_address ?? match.call?.to_number ?? null
-    const phone = normalizePhone(toNumber)
-    const simulatorEvents = events
-      .filter((event) => {
-        if (
-          match.call &&
-          event.operation_context === match.call.operation_context
-        ) {
-          return true
-        }
-        if (
-          match.call?.call_connection_id &&
-          event.call_connection_id === match.call.call_connection_id
-        ) {
-          return true
-        }
-        if (
-          match.call?.server_call_id &&
-          event.server_call_id === match.call.server_call_id
-        ) {
-          return true
-        }
-        return phone && normalizePhone(event.to_number) === phone
-      })
-      .sort(
-        (left, right) =>
-          Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
-      )
-      .slice(-8)
+
+    const simulatorEvents = match.call
+      ? eventsForCall(events, match.call)
+      : eventsForPhoneAttempt(events, toNumber, delivery)
 
     return {
       id: delivery.id,
@@ -802,6 +796,128 @@ export function buildDeliveryTimelines(
       simulator_events: simulatorEvents,
     }
   })
+}
+
+/**
+ * Strict event selection for a matched call: take events whose context,
+ * connection id, or server call id matches the call, plus context-less
+ * callbacks that fall inside the matched events' time window. This deliberately
+ * does NOT fall back to a phone-number union, so events from other call
+ * attempts to the same number can never contaminate the timeline.
+ */
+function eventsForCall(events: CallEvent[], call: ActiveCall): CallEvent[] {
+  const matched = events.filter((event) => {
+    if (event.operation_context === call.operation_context) return true
+    if (
+      call.call_connection_id &&
+      event.call_connection_id === call.call_connection_id
+    ) {
+      return true
+    }
+    if (
+      call.server_call_id &&
+      event.server_call_id === call.server_call_id
+    ) {
+      return true
+    }
+    return false
+  })
+
+  return attachContextlessCallbacks(matched, events).slice(-maxTimelineEvents)
+}
+
+/**
+ * Event selection for an unmatched (phone-only) delivery. Without a live call
+ * to anchor on, we group all events for the phone number by operation_context
+ * and select the single attempt whose activity is closest to the delivery's
+ * result/start time. This replaces the previous "last 8 events for this number"
+ * behavior that mixed unrelated call attempts together.
+ */
+function eventsForPhoneAttempt(
+  events: CallEvent[],
+  toNumber: string | null,
+  delivery: ProactiveDelivery
+): CallEvent[] {
+  const phone = normalizePhone(toNumber)
+  if (!phone) return []
+
+  const phoneEvents = events.filter(
+    (event) => normalizePhone(event.to_number) === phone
+  )
+  if (!phoneEvents.length) return []
+
+  const groups = groupEventsByContext(phoneEvents)
+  if (!groups.length) {
+    return phoneEvents
+      .slice()
+      .sort(byOccurredAt)
+      .slice(-maxTimelineEvents)
+  }
+
+  const anchor = deliveryAnchorTime(delivery)
+
+  // Pick the group whose midpoint is closest to the delivery anchor; when there
+  // is no usable anchor, pick the most recent (and richest) attempt.
+  const chosen = groups
+    .slice()
+    .sort((left, right) => {
+      if (anchor !== null) {
+        const leftDistance = Math.abs(groupMidpoint(left) - anchor)
+        const rightDistance = Math.abs(groupMidpoint(right) - anchor)
+        if (leftDistance !== rightDistance) return leftDistance - rightDistance
+      }
+      // Tie-break / no-anchor: richer attempt, then more recent.
+      if (left.length !== right.length) return right.length - left.length
+      return groupMidpoint(right) - groupMidpoint(left)
+    })[0]
+
+  return attachContextlessCallbacks(chosen, phoneEvents).slice(
+    -maxTimelineEvents
+  )
+}
+
+/** Group events by operation_context (ignoring context-less callbacks). */
+function groupEventsByContext(events: CallEvent[]): CallEvent[][] {
+  const groups = new Map<string, CallEvent[]>()
+  for (const event of events) {
+    const key = event.operation_context ?? event.call_connection_id
+    if (!key) continue
+    const group = groups.get(key)
+    if (group) group.push(event)
+    else groups.set(key, [event])
+  }
+  return Array.from(groups.values()).map((group) => group.slice().sort(byOccurredAt))
+}
+
+/**
+ * Fold context-less callbacks (events lacking operation_context, e.g. some
+ * ParticipantsUpdated) into a chosen attempt when they fall within (or just
+ * outside) the attempt's time window.
+ */
+function attachContextlessCallbacks(
+  chosen: CallEvent[],
+  pool: CallEvent[]
+): CallEvent[] {
+  if (!chosen.length) return chosen.slice().sort(byOccurredAt)
+
+  const chosenKeys = new Set(chosen.map((event) => event.operation_context))
+  const start = firstEpoch(chosen)
+  const end = lastEpoch(chosen)
+
+  const adopted = pool.filter((event) => {
+    if (event.operation_context && chosenKeys.has(event.operation_context)) {
+      return false
+    }
+    if (event.operation_context) return false
+    const epoch = Date.parse(event.occurred_at)
+    return (
+      Number.isFinite(epoch) &&
+      epoch >= start - contextlessWindowMs &&
+      epoch <= end + contextlessWindowMs
+    )
+  })
+
+  return [...chosen, ...adopted].sort(byOccurredAt)
 }
 
 function deliveryCallMatch(
@@ -827,27 +943,84 @@ function deliveryCallMatch(
   )
   if (!phoneMatches.length) return { call: null, correlation: "unmatched" }
 
-  return {
-    call: closestCallByTime(delivery, phoneMatches),
-    correlation: "phone",
-  }
+  const closest = closestCallByTime(delivery, phoneMatches)
+  return closest
+    ? { call: closest, correlation: "phone" }
+    : { call: null, correlation: "unmatched" }
 }
 
+/**
+ * Null-safe closest-call selection. Anchors on the delivery's result/end time
+ * (where the call actually happens for completed deliveries) before falling
+ * back to start/created times. Calls with unparseable incoming times are sorted
+ * last rather than producing NaN comparisons.
+ */
 function closestCallByTime(
   delivery: ProactiveDelivery,
   calls: ActiveCall[]
-): ActiveCall {
-  const anchor =
-    timestamp(delivery.start_date) ??
-    timestamp(delivery.created_on) ??
-    timestamp(delivery.modified_on)
-  if (anchor === null) return calls[0]
+): ActiveCall | null {
+  if (!calls.length) return null
+
+  const anchor = deliveryAnchorTime(delivery)
+  if (anchor === null) {
+    // No anchor: prefer the most recent call to this number.
+    return [...calls].sort(
+      (left, right) =>
+        (timestamp(right.incoming_call_time) ?? 0) -
+        (timestamp(left.incoming_call_time) ?? 0)
+    )[0]
+  }
 
   return [...calls].sort(
     (left, right) =>
-      Math.abs(timestamp(left.incoming_call_time)! - anchor) -
-      Math.abs(timestamp(right.incoming_call_time)! - anchor)
+      callDistance(left, anchor) - callDistance(right, anchor)
   )[0]
+}
+
+function callDistance(call: ActiveCall, anchor: number): number {
+  const time = timestamp(call.incoming_call_time)
+  return time === null ? Number.POSITIVE_INFINITY : Math.abs(time - anchor)
+}
+
+/**
+ * The most representative time for "when this delivery's call happened".
+ * For completed deliveries the call lines up with the result; created_on can be
+ * many minutes earlier (in observed data, ~40 min), so it is the last resort.
+ */
+function deliveryAnchorTime(delivery: ProactiveDelivery): number | null {
+  return (
+    timestamp(delivery.result_date) ??
+    timestamp(delivery.end_date) ??
+    timestamp(delivery.start_date) ??
+    timestamp(delivery.modified_on) ??
+    timestamp(delivery.created_on)
+  )
+}
+
+function groupMidpoint(events: CallEvent[]): number {
+  return (firstEpoch(events) + lastEpoch(events)) / 2
+}
+
+function firstEpoch(events: CallEvent[]): number {
+  let min = Number.POSITIVE_INFINITY
+  for (const event of events) {
+    const epoch = Date.parse(event.occurred_at)
+    if (Number.isFinite(epoch) && epoch < min) min = epoch
+  }
+  return Number.isFinite(min) ? min : 0
+}
+
+function lastEpoch(events: CallEvent[]): number {
+  let max = Number.NEGATIVE_INFINITY
+  for (const event of events) {
+    const epoch = Date.parse(event.occurred_at)
+    if (Number.isFinite(epoch) && epoch > max) max = epoch
+  }
+  return Number.isFinite(max) ? max : 0
+}
+
+function byOccurredAt(left: CallEvent, right: CallEvent): number {
+  return Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
 }
 
 function timestamp(value: string | null): number | null {
@@ -855,6 +1028,7 @@ function timestamp(value: string | null): number | null {
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? parsed : null
 }
+
 
 function callbackError(data: Record<string, unknown>): string | null {
   if (!isRecord(data.resultInformation)) return null
