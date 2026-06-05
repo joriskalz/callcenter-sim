@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -34,12 +35,24 @@ type GraphEvent = {
   label: string
   detail: string
   time: string
+  /** Position on the track, 0-100, after collision-aware distribution. */
   left: number
+  /** Raw position on the track, 0-100, purely time-proportional. */
+  rawLeft: number
+  /** Epoch ms of the event. */
+  epoch: number
+  /** Seconds elapsed since the first graphed event. */
+  offsetSeconds: number
+  /** Seconds elapsed since the previous graphed event. */
+  gapSeconds: number
   failed: boolean
 }
 
 const storageKey = "callcenter-sim:delivery-timelines"
 const maxStoredTimelines = 50
+
+/** Enforce a minimum horizontal spacing (in % of track) between markers. */
+const minMarkerSpacing = 11
 
 export function DeliveryTimelineBoard({
   status,
@@ -80,6 +93,37 @@ export function DeliveryTimelineBoard({
     ? mergeTimelines(liveTimelines, storedTimelines)
     : storedTimelines
   const visibleTimelines = timelines.slice(0, 8)
+
+  // High-level diagnostics for the whole board, gated behind ?debugTimeline.
+  React.useEffect(() => {
+    if (!timelineDebugEnabled()) return
+
+    console.groupCollapsed(
+      `%c[DeliveryTimeline] board snapshot · ${timelines.length} timelines (${visibleTimelines.length} visible)`,
+      "color:#6366f1;font-weight:600"
+    )
+    console.log("delivery_error:", status?.delivery_error ?? null)
+    console.log("live timelines from status:", liveTimelines.length)
+    console.log("stored (localStorage) timelines:", storedTimelines.length)
+    console.table(
+      timelines.map((timeline) => ({
+        id: timeline.id,
+        correlation: timeline.correlation,
+        status: timeline.delivery.status,
+        result: timeline.delivery.result,
+        events: timeline.simulator_events.length,
+        hasCall: Boolean(timeline.simulator_call),
+        to: timeline.to_number,
+      }))
+    )
+    console.groupEnd()
+  }, [
+    liveTimelines.length,
+    status?.delivery_error,
+    storedTimelines.length,
+    timelines,
+    visibleTimelines.length,
+  ])
 
   return (
     <Section
@@ -333,10 +377,23 @@ function EventGraph({
   timeline: DeliveryTimeline
   revealSensitive: boolean
 }) {
-  const graphEvents = graphEventsForTimeline(timeline)
+  const graphEvents = React.useMemo(
+    () => graphEventsForTimeline(timeline),
+    [timeline]
+  )
   const trackWidth = Math.min(960, Math.max(672, graphEvents.length * 148))
   const startTime = graphEvents[0]?.time ?? null
   const endTime = graphEvents[graphEvents.length - 1]?.time ?? null
+  const totalDuration =
+    graphEvents.length > 1
+      ? graphEvents[graphEvents.length - 1].offsetSeconds
+      : 0
+
+  // Per-timeline diagnostics, gated behind ?debugTimeline.
+  React.useEffect(() => {
+    if (!timelineDebugEnabled()) return
+    logTimelineDiagnostics(timeline, graphEvents)
+  }, [graphEvents, timeline])
 
   return (
     <div className="rounded-lg border bg-background/60 p-3">
@@ -345,8 +402,15 @@ function EventGraph({
           Event Graph
         </div>
         {graphEvents.length ? (
-          <div className="text-xs text-muted-foreground">
-            {formatTime(startTime)} - {formatTime(endTime)}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {formatTime(startTime)} - {formatTime(endTime)}
+            </span>
+            {totalDuration > 0 ? (
+              <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                {formatDuration(totalDuration)} total
+              </Badge>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -354,20 +418,17 @@ function EventGraph({
       {graphEvents.length ? (
         <div className="overflow-x-auto pb-1">
           <div
-            className="relative mx-auto h-40 min-w-[42rem]"
+            className="relative mx-auto h-44 min-w-[42rem]"
             style={{ width: `${trackWidth}px` }}
           >
             <div className="absolute inset-x-3 bottom-8 h-0.5 rounded-full bg-border" />
-            <TrackEndpoint
-              align="start"
-              label="Start"
-              time={startTime}
-            />
+            <TrackEndpoint align="start" label="Start" time={startTime} />
             <TrackEndpoint align="end" label="End" time={endTime} />
 
             <div className="absolute inset-x-3 top-0 bottom-0">
-              {graphEvents.map((event) => {
+              {graphEvents.map((event, index) => {
                 const anchor = graphAnchor(event.left)
+                const previous = graphEvents[index - 1]
 
                 return (
                   <div
@@ -390,6 +451,19 @@ function EventGraph({
                           {formatTime(event.time)}
                         </span>
                       </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className="h-4 px-1 text-[10px] font-medium"
+                        >
+                          +{formatDuration(event.offsetSeconds)}
+                        </Badge>
+                        {index > 0 && event.gapSeconds > 0 ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            Δ {formatDuration(event.gapSeconds)}
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                         <SensitiveValue
                           value={event.detail}
@@ -398,6 +472,15 @@ function EventGraph({
                         />
                       </div>
                     </div>
+
+                    {previous ? (
+                      <SegmentLabel
+                        leftPercent={event.left}
+                        previousLeftPercent={previous.left}
+                        gapSeconds={event.gapSeconds}
+                      />
+                    ) : null}
+
                     <div
                       className={cn(
                         "absolute bottom-8 h-5 w-px bg-border",
@@ -425,6 +508,32 @@ function EventGraph({
         </div>
       )}
     </div>
+  )
+}
+
+/** Midpoint duration label rendered on the connecting line between markers. */
+function SegmentLabel({
+  leftPercent,
+  previousLeftPercent,
+  gapSeconds,
+}: {
+  leftPercent: number
+  previousLeftPercent: number
+  gapSeconds: number
+}) {
+  if (gapSeconds <= 0) return null
+
+  // The wrapper is anchored at `leftPercent`; place the label halfway back
+  // toward the previous marker. Width per-step is (leftPercent - previousLeftPercent).
+  const halfStep = (leftPercent - previousLeftPercent) / 2
+
+  return (
+    <span
+      className="absolute bottom-[2.6rem] -translate-x-1/2 rounded-full bg-background px-1 text-[10px] whitespace-nowrap text-muted-foreground"
+      style={{ left: `-${halfStep}%` }}
+    >
+      {formatDuration(gapSeconds)}
+    </span>
   )
 }
 
@@ -490,14 +599,69 @@ function graphEventsForTimeline(timeline: DeliveryTimeline): GraphEvent[] {
   const lastTime = events[events.length - 1].time
   const span = Math.max(1, lastTime - firstTime)
 
-  return events.map(({ event, index, time }) => ({
-    key: `${event.occurred_at}-${event.event_type}-${index}`,
-    label: compactEventType(event.event_type),
-    detail: event.error ?? event.message,
-    time: event.occurred_at,
-    left: events.length === 1 ? 50 : ((time - firstTime) / span) * 100,
-    failed: Boolean(event.error),
-  }))
+  // 1. Compute the raw, purely time-proportional position for each event.
+  const rawLefts = events.map(({ time }) =>
+    events.length === 1 ? 50 : ((time - firstTime) / span) * 100
+  )
+
+  // 2. Distribute so that adjacent markers keep a readable minimum spacing.
+  const distributedLefts = distributeOffsets(rawLefts, minMarkerSpacing)
+
+  let previousEpoch = firstTime
+
+  return events.map(({ event, index, time }, position) => {
+    const gapSeconds = (time - previousEpoch) / 1000
+    previousEpoch = time
+
+    return {
+      key: `${event.occurred_at}-${event.event_type}-${index}`,
+      label: compactEventType(event.event_type),
+      detail: event.error ?? event.message,
+      time: event.occurred_at,
+      left: distributedLefts[position],
+      rawLeft: rawLefts[position],
+      epoch: time,
+      offsetSeconds: (time - firstTime) / 1000,
+      gapSeconds,
+      failed: Boolean(event.error),
+    }
+  })
+}
+
+/**
+ * Spread positions so no two are closer than `minGap` (in % of track),
+ * while preserving order and staying within [0, 100]. This keeps the
+ * timeline roughly time-proportional but prevents clustered markers from
+ * overlapping into an unreadable smear.
+ */
+function distributeOffsets(positions: number[], minGap: number): number[] {
+  if (positions.length <= 1) return positions.slice()
+
+  const result = positions.slice()
+
+  // Forward pass: push markers right so each is >= previous + minGap.
+  for (let index = 1; index < result.length; index += 1) {
+    const minAllowed = result[index - 1] + minGap
+    if (result[index] < minAllowed) {
+      result[index] = minAllowed
+    }
+  }
+
+  // If we overflowed past 100, do a backward pass to pull everything in.
+  const overflow = result[result.length - 1] - 100
+  if (overflow > 0) {
+    result[result.length - 1] = 100
+    for (let index = result.length - 2; index >= 0; index -= 1) {
+      const maxAllowed = result[index + 1] - minGap
+      if (result[index] > maxAllowed) {
+        result[index] = maxAllowed
+      }
+    }
+    // Clamp any leading negatives back to 0.
+    result[0] = Math.max(0, result[0])
+  }
+
+  return result.map((value) => Math.min(100, Math.max(0, value)))
 }
 
 function compactEventType(value: string): string {
@@ -679,6 +843,144 @@ function eventTime(
   return events.find((event) => event.event_type === type)?.occurred_at ?? null
 }
 
+/* -------------------------------------------------------------------------- */
+/* Diagnostics                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Enable verbose timeline logging by adding `?debugTimeline` (or
+ * `?debugTimeline=1`) to the monitor URL. Returns false during SSR.
+ */
+function timelineDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    return new URLSearchParams(window.location.search).has("debugTimeline")
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Emit a structured, copy-pasteable dump of everything that drives the
+ * timeline visualization for a single delivery: the delivery record's key
+ * timestamps, the derived stages, and the fully-resolved graph events
+ * (absolute time, relative offset, inter-event gap, and computed position).
+ *
+ * Paste the resulting `[DeliveryTimeline] <id>` group back so the data can
+ * be inspected.
+ */
+function logTimelineDiagnostics(
+  timeline: DeliveryTimeline,
+  graphEvents: GraphEvent[]
+): void {
+  const delivery = timeline.delivery
+  const call = timeline.simulator_call
+
+  console.groupCollapsed(
+    `%c[DeliveryTimeline] ${timeline.id} · ${graphEvents.length} graph events · ${timeline.correlation}`,
+    "color:#0ea5e9;font-weight:600"
+  )
+
+  console.log("Summary", {
+    id: timeline.id,
+    correlation: timeline.correlation,
+    to_number: timeline.to_number,
+    contact_id: timeline.contact_id,
+    has_simulator_call: Boolean(call),
+    simulator_event_count: timeline.simulator_events.length,
+    graph_event_count: graphEvents.length,
+    total_duration_seconds:
+      graphEvents.length > 1
+        ? graphEvents[graphEvents.length - 1].offsetSeconds
+        : 0,
+  })
+
+  console.log("Delivery timestamps", {
+    status: delivery.status,
+    state: delivery.state,
+    result: delivery.result,
+    dial_mode_type: delivery.dial_mode_type,
+    created_on: delivery.created_on,
+    start_date: delivery.start_date,
+    end_date: delivery.end_date,
+    result_date: delivery.result_date,
+    modified_on: delivery.modified_on,
+  })
+
+  if (call) {
+    console.log("Simulator call timestamps", {
+      state: call.state,
+      scenario_name: call.scenario_name,
+      current_action: call.current_action,
+      incoming_call_time: call.incoming_call_time,
+      answer_time: call.answer_time,
+      call_connected_time: call.call_connected_time,
+      play_started_time: call.play_started_time,
+      play_completed_time: call.play_completed_time,
+      hangup_time: call.hangup_time,
+      call_disconnected_time: call.call_disconnected_time,
+      result: call.result,
+      error: call.error,
+    })
+  } else {
+    console.log("Simulator call: <none matched>")
+  }
+
+  console.log("Derived stages")
+  console.table(
+    stagesForTimeline(timeline).map((stage) => ({
+      label: stage.label,
+      state: stage.state,
+      detail: stage.detail,
+      time: stage.time,
+    }))
+  )
+
+  if (graphEvents.length) {
+    console.log("Graph events (chronological)")
+    console.table(
+      graphEvents.map((event) => ({
+        label: event.label,
+        time: event.time,
+        "offset (s)": round(event.offsetSeconds),
+        "gap (s)": round(event.gapSeconds),
+        "raw left (%)": round(event.rawLeft),
+        "drawn left (%)": round(event.left),
+        failed: event.failed,
+        detail: event.detail,
+      }))
+    )
+
+    // Highlight clustering: how many markers were nudged from their raw spot.
+    const nudged = graphEvents.filter(
+      (event) => Math.abs(event.left - event.rawLeft) > 0.5
+    )
+    if (nudged.length) {
+      console.log(
+        `Position adjustments: ${nudged.length}/${graphEvents.length} markers were spaced out to avoid overlap.`,
+        nudged.map((event) => ({
+          label: event.label,
+          raw: round(event.rawLeft),
+          drawn: round(event.left),
+        }))
+      )
+    }
+  } else {
+    console.log("Graph events: <none — no parseable simulator event times>")
+  }
+
+  console.log("Raw simulator_events", timeline.simulator_events)
+  console.groupEnd()
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/* -------------------------------------------------------------------------- */
+/* Formatting                                                                 */
+/* -------------------------------------------------------------------------- */
+
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : ""
 }
@@ -691,4 +993,15 @@ function formatTime(value: string | null) {
         second: "2-digit",
       })
     : ""
+}
+
+/** Compact duration: `0.8s`, `4.2s`, `1m 03s`. */
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0s"
+  if (seconds < 60) {
+    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  const remainder = Math.round(seconds % 60)
+  return `${minutes}m ${String(remainder).padStart(2, "0")}s`
 }
