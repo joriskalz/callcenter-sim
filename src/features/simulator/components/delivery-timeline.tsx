@@ -4,6 +4,8 @@ import {
   CheckCircle2Icon,
   CircleDashedIcon,
   ExternalLinkIcon,
+  GaugeIcon,
+  ListOrderedIcon,
   MessageSquareTextIcon,
   PhoneIncomingIcon,
   PhoneOutgoingIcon,
@@ -15,12 +17,14 @@ import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-import type { AppStatus, DeliveryTimeline } from "../types"
+import type { AppStatus, CallEvent, DeliveryTimeline } from "../types"
 import { Section } from "./section"
 import { SensitiveValue } from "./sensitive-value"
 import { StatusBadge } from "./status-badge"
 
 type StageState = "complete" | "active" | "waiting" | "failed"
+
+type GraphMode = "proportional" | "even"
 
 type Stage = {
   label: string
@@ -35,23 +39,30 @@ type GraphEvent = {
   label: string
   detail: string
   time: string
-  /** Position on the track, 0-100, after collision-aware distribution. */
+  /** Drawn position 0-100 after spacing/distribution. */
   left: number
-  /** Raw position on the track, 0-100, purely time-proportional. */
+  /** Purely time-proportional position 0-100. */
   rawLeft: number
-  /** Epoch ms of the event. */
   epoch: number
-  /** Seconds elapsed since the first graphed event. */
+  /** Seconds since first graphed event of the attempt. */
   offsetSeconds: number
-  /** Seconds elapsed since the previous graphed event. */
+  /** Seconds since the previous graphed event. */
   gapSeconds: number
   failed: boolean
 }
 
+/** Result of grouping a timeline's raw events into a single call attempt. */
+type CallAttempt = {
+  /** operation_context (or fallback key) that identifies this attempt. */
+  contextKey: string
+  events: CallEvent[]
+}
+
 const storageKey = "callcenter-sim:delivery-timelines"
+const graphModeStorageKey = "callcenter-sim:timeline-graph-mode"
 const maxStoredTimelines = 50
 
-/** Enforce a minimum horizontal spacing (in % of track) between markers. */
+/** Minimum horizontal spacing (% of track) between markers in proportional mode. */
 const minMarkerSpacing = 11
 
 export function DeliveryTimelineBoard({
@@ -65,6 +76,17 @@ export function DeliveryTimelineBoard({
   const [storedTimelines, setStoredTimelines] = React.useState<
     DeliveryTimeline[]
   >([])
+  const [graphMode, setGraphMode] = React.useState<GraphMode>("proportional")
+
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem(graphModeStorageKey)
+    if (stored === "proportional" || stored === "even") setGraphMode(stored)
+  }, [])
+
+  const handleGraphModeChange = (mode: GraphMode) => {
+    setGraphMode(mode)
+    window.localStorage.setItem(graphModeStorageKey, mode)
+  }
 
   React.useEffect(() => {
     try {
@@ -94,7 +116,6 @@ export function DeliveryTimelineBoard({
     : storedTimelines
   const visibleTimelines = timelines.slice(0, 8)
 
-  // High-level diagnostics for the whole board, gated behind ?debugTimeline.
   React.useEffect(() => {
     if (!timelineDebugEnabled()) return
 
@@ -106,15 +127,19 @@ export function DeliveryTimelineBoard({
     console.log("live timelines from status:", liveTimelines.length)
     console.log("stored (localStorage) timelines:", storedTimelines.length)
     console.table(
-      timelines.map((timeline) => ({
-        id: timeline.id,
-        correlation: timeline.correlation,
-        status: timeline.delivery.status,
-        result: timeline.delivery.result,
-        events: timeline.simulator_events.length,
-        hasCall: Boolean(timeline.simulator_call),
-        to: timeline.to_number,
-      }))
+      timelines.map((timeline) => {
+        const attempt = dominantAttempt(timeline)
+        return {
+          id: timeline.id,
+          correlation: timeline.correlation,
+          status: timeline.delivery.status,
+          result: timeline.delivery.result,
+          totalEvents: timeline.simulator_events.length,
+          attemptEvents: attempt.events.length,
+          attemptContext: attempt.contextKey,
+          hasCall: Boolean(timeline.simulator_call),
+        }
+      })
     )
     console.groupEnd()
   }, [
@@ -129,9 +154,14 @@ export function DeliveryTimelineBoard({
     <Section
       title="Delivery Timeline"
       meta={
-        status?.delivery_error
-          ? "Dataverse delivery query failed"
-          : `${timelines.length} recent deliveries`
+        status?.delivery_error ? (
+          "Dataverse delivery query failed"
+        ) : (
+          <div className="flex items-center gap-3">
+            <GraphModeToggle mode={graphMode} onChange={handleGraphModeChange} />
+            <span>{timelines.length} recent deliveries</span>
+          </div>
+        )
       }
     >
       {status?.delivery_error ? (
@@ -147,6 +177,7 @@ export function DeliveryTimelineBoard({
             <TimelineRow
               key={timeline.id}
               timeline={timeline}
+              graphMode={graphMode}
               revealSensitive={revealSensitive}
             />
           ))}
@@ -157,6 +188,70 @@ export function DeliveryTimelineBoard({
         </div>
       )}
     </Section>
+  )
+}
+
+function GraphModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: GraphMode
+  onChange: (mode: GraphMode) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Event graph layout"
+      className="inline-flex items-center rounded-full border bg-input/30 p-0.5"
+    >
+      <ModeButton
+        active={mode === "proportional"}
+        label="Time"
+        title="Position markers proportionally to elapsed time"
+        icon={<GaugeIcon className="size-3.5" />}
+        onClick={() => onChange("proportional")}
+      />
+      <ModeButton
+        active={mode === "even"}
+        label="Even"
+        title="Space markers evenly in order, ignoring elapsed time"
+        icon={<ListOrderedIcon className="size-3.5" />}
+        onClick={() => onChange("even")}
+      />
+    </div>
+  )
+}
+
+function ModeButton({
+  active,
+  label,
+  title,
+  icon,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  title: string
+  icon: ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        active
+          ? "bg-background text-foreground shadow-xs"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 
@@ -200,21 +295,19 @@ function mergeEvents(
   stored: DeliveryTimeline["simulator_events"]
 ) {
   const byKey = new Map(
-    stored.map((event) => [
-      `${event.occurred_at}:${event.event_type}:${event.operation_context ?? ""}`,
-      event,
-    ])
+    stored.map((event) => [eventDedupeKey(event), event])
   )
   for (const event of fresh) {
-    byKey.set(
-      `${event.occurred_at}:${event.event_type}:${event.operation_context ?? ""}`,
-      event
-    )
+    byKey.set(eventDedupeKey(event), event)
   }
   return Array.from(byKey.values()).sort(
     (left, right) =>
       Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
   )
+}
+
+function eventDedupeKey(event: CallEvent): string {
+  return `${event.occurred_at}:${event.event_type}:${event.operation_context ?? ""}`
 }
 
 function timelineTime(delivery: DeliveryTimeline["delivery"]): number {
@@ -239,14 +332,116 @@ function isDeliveryTimeline(value: unknown): value is DeliveryTimeline {
   )
 }
 
+/* -------------------------------------------------------------------------- */
+/* Attempt grouping — the core fix for cross-call event contamination.        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Phone-number correlation can attach events from earlier, unrelated call
+ * attempts (different operation_context) to a timeline. Those stray events
+ * massively inflate the time span and corrupt the graph.
+ *
+ * We group events by `operation_context` (falling back to call_connection_id),
+ * then pick the "dominant" attempt: the one with the most events, breaking
+ * ties by the most recent activity. Events whose context is null are folded
+ * into the nearest attempt in time so callbacks (which sometimes lack context)
+ * stay attached.
+ */
+function dominantAttempt(timeline: DeliveryTimeline): CallAttempt {
+  const events = timeline.simulator_events
+  if (events.length <= 1) {
+    return { contextKey: events[0]?.operation_context ?? "", events: [...events] }
+  }
+
+  const groups = new Map<string, CallEvent[]>()
+  const contextless: CallEvent[] = []
+
+  for (const event of events) {
+    const key = attemptKey(event)
+    if (!key) {
+      contextless.push(event)
+      continue
+    }
+    const group = groups.get(key)
+    if (group) group.push(event)
+    else groups.set(key, [event])
+  }
+
+  if (!groups.size) {
+    return { contextKey: "", events: [...events] }
+  }
+
+  // Choose the dominant group: most events, then latest activity.
+  let best: { key: string; events: CallEvent[] } | null = null
+  for (const [key, groupEvents] of groups) {
+    if (
+      !best ||
+      groupEvents.length > best.events.length ||
+      (groupEvents.length === best.events.length &&
+        lastEpoch(groupEvents) > lastEpoch(best.events))
+    ) {
+      best = { key, events: groupEvents }
+    }
+  }
+
+  const chosen = best as { key: string; events: CallEvent[] }
+  const start = firstEpoch(chosen.events)
+  const end = lastEpoch(chosen.events)
+
+  // Attach context-less callbacks (e.g. ParticipantsUpdated) that fall within
+  // the chosen attempt's window so the lifecycle stays complete.
+  const adopted = contextless.filter((event) => {
+    const epoch = Date.parse(event.occurred_at)
+    return Number.isFinite(epoch) && epoch >= start - 2000 && epoch <= end + 2000
+  })
+
+  const merged = [...chosen.events, ...adopted].sort(
+    (left, right) =>
+      Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
+  )
+
+  return { contextKey: chosen.key, events: merged }
+}
+
+function attemptKey(event: CallEvent): string | null {
+  return event.operation_context ?? event.call_connection_id ?? null
+}
+
+function firstEpoch(events: CallEvent[]): number {
+  return Math.min(...events.map((event) => Date.parse(event.occurred_at)))
+}
+
+function lastEpoch(events: CallEvent[]): number {
+  return Math.max(...events.map((event) => Date.parse(event.occurred_at)))
+}
+
+function attemptCount(timeline: DeliveryTimeline): number {
+  const keys = new Set<string>()
+  for (const event of timeline.simulator_events) {
+    const key = attemptKey(event)
+    if (key) keys.add(key)
+  }
+  return keys.size
+}
+
+/* -------------------------------------------------------------------------- */
+
 function TimelineRow({
   timeline,
+  graphMode,
   revealSensitive,
 }: {
   timeline: DeliveryTimeline
+  graphMode: GraphMode
   revealSensitive: boolean
 }) {
-  const stages = stagesForTimeline(timeline)
+  const attempt = React.useMemo(() => dominantAttempt(timeline), [timeline])
+  const stages = React.useMemo(
+    () => stagesForTimeline(timeline, attempt),
+    [timeline, attempt]
+  )
+  const droppedCount = timeline.simulator_events.length - attempt.events.length
+  const totalAttempts = attemptCount(timeline)
 
   return (
     <div className="grid gap-4 px-4 py-4">
@@ -266,6 +461,15 @@ function TimelineRow({
             <Badge variant="outline" className="capitalize">
               {timeline.correlation}
             </Badge>
+            {totalAttempts > 1 ? (
+              <Badge
+                variant="outline"
+                className="border-warning/35 text-warning"
+                title={`${totalAttempts} call attempts share this number; showing the dominant one`}
+              >
+                {totalAttempts} attempts
+              </Badge>
+            ) : null}
           </div>
           <div className="truncate text-sm font-medium">
             {timeline.to_number ? (
@@ -323,7 +527,7 @@ function TimelineRow({
                   </span>
                   {stage.time ? (
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      {formatDate(stage.time)}
+                      {formatTime(stage.time)}
                     </span>
                   ) : null}
                 </span>
@@ -336,11 +540,11 @@ function TimelineRow({
           <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
             Simulator Events
           </div>
-          {timeline.simulator_events.length ? (
+          {attempt.events.length ? (
             <div className="space-y-2">
-              {timeline.simulator_events.slice(-4).map((event) => (
+              {attempt.events.slice(-4).map((event, index) => (
                 <div
-                  key={`${event.occurred_at}-${event.event_type}`}
+                  key={`${event.occurred_at}-${event.event_type}-${index}`}
                   className="min-w-0"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -365,22 +569,49 @@ function TimelineRow({
         </div>
       </div>
 
-      <EventGraph timeline={timeline} revealSensitive={revealSensitive} />
+      {droppedCount > 0 ? (
+        <div className="flex items-center gap-2 rounded-md border border-dashed border-warning/40 bg-warning/5 px-3 py-1.5 text-xs text-warning">
+          <AlertTriangleIcon className="size-3.5 shrink-0" />
+          <span>
+            {droppedCount} event{droppedCount === 1 ? "" : "s"} from other call
+            attempts on this number were excluded from the graph to keep the
+            timing accurate.
+          </span>
+        </div>
+      ) : null}
+
+      <EventGraph
+        attempt={attempt}
+        graphMode={graphMode}
+        timeline={timeline}
+        revealSensitive={revealSensitive}
+      />
     </div>
   )
 }
 
 function EventGraph({
+  attempt,
+  graphMode,
   timeline,
   revealSensitive,
 }: {
+  attempt: CallAttempt
+  graphMode: GraphMode
   timeline: DeliveryTimeline
   revealSensitive: boolean
 }) {
-  const graphEvents = React.useMemo(
-    () => graphEventsForTimeline(timeline),
-    [timeline]
+  const proportionalEvents = React.useMemo(
+    () => graphEventsForAttempt(attempt, "proportional"),
+    [attempt]
   )
+  const evenEvents = React.useMemo(
+    () => graphEventsForAttempt(attempt, "even"),
+    [attempt]
+  )
+  const graphEvents =
+    graphMode === "proportional" ? proportionalEvents : evenEvents
+
   const trackWidth = Math.min(960, Math.max(672, graphEvents.length * 148))
   const startTime = graphEvents[0]?.time ?? null
   const endTime = graphEvents[graphEvents.length - 1]?.time ?? null
@@ -389,17 +620,19 @@ function EventGraph({
       ? graphEvents[graphEvents.length - 1].offsetSeconds
       : 0
 
-  // Per-timeline diagnostics, gated behind ?debugTimeline.
   React.useEffect(() => {
     if (!timelineDebugEnabled()) return
-    logTimelineDiagnostics(timeline, graphEvents)
-  }, [graphEvents, timeline])
+    logTimelineDiagnostics(timeline, attempt, proportionalEvents)
+  }, [attempt, proportionalEvents, timeline])
 
   return (
     <div className="rounded-lg border bg-background/60 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase">
           Event Graph
+          <Badge variant="outline" className="h-4 px-1 text-[10px] normal-case">
+            {graphMode === "proportional" ? "time-scaled" : "evenly spaced"}
+          </Badge>
         </div>
         {graphEvents.length ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -439,8 +672,7 @@ function EventGraph({
                     <div
                       className={cn(
                         "rounded-md border bg-card px-2.5 py-2 shadow-xs",
-                        event.failed &&
-                          "border-destructive/35 bg-destructive/10"
+                        event.failed && "border-destructive/35 bg-destructive/10"
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -473,7 +705,7 @@ function EventGraph({
                       </div>
                     </div>
 
-                    {previous ? (
+                    {previous && graphMode === "proportional" ? (
                       <SegmentLabel
                         leftPercent={event.left}
                         previousLeftPercent={previous.left}
@@ -511,7 +743,6 @@ function EventGraph({
   )
 }
 
-/** Midpoint duration label rendered on the connecting line between markers. */
 function SegmentLabel({
   leftPercent,
   previousLeftPercent,
@@ -523,8 +754,6 @@ function SegmentLabel({
 }) {
   if (gapSeconds <= 0) return null
 
-  // The wrapper is anchored at `leftPercent`; place the label halfway back
-  // toward the previous marker. Width per-step is (leftPercent - previousLeftPercent).
   const halfStep = (leftPercent - previousLeftPercent) / 2
 
   return (
@@ -578,19 +807,17 @@ function graphAnchor(left: number): { wrapper: string; marker: string } {
   }
 }
 
-function graphEventsForTimeline(timeline: DeliveryTimeline): GraphEvent[] {
-  const events = timeline.simulator_events
+function graphEventsForAttempt(
+  attempt: CallAttempt,
+  mode: GraphMode
+): GraphEvent[] {
+  const events = attempt.events
     .map((event, index) => {
       const time = Date.parse(event.occurred_at)
       if (!Number.isFinite(time)) return null
-
-      return {
-        event,
-        index,
-        time,
-      }
+      return { event, index, time }
     })
-    .filter((event) => event !== null)
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
     .sort((left, right) => left.time - right.time)
 
   if (!events.length) return []
@@ -599,13 +826,18 @@ function graphEventsForTimeline(timeline: DeliveryTimeline): GraphEvent[] {
   const lastTime = events[events.length - 1].time
   const span = Math.max(1, lastTime - firstTime)
 
-  // 1. Compute the raw, purely time-proportional position for each event.
   const rawLefts = events.map(({ time }) =>
     events.length === 1 ? 50 : ((time - firstTime) / span) * 100
   )
 
-  // 2. Distribute so that adjacent markers keep a readable minimum spacing.
-  const distributedLefts = distributeOffsets(rawLefts, minMarkerSpacing)
+  // In "even" mode, ignore time entirely: distribute by ordinal index.
+  // In "proportional" mode, keep time but enforce a readable minimum spacing.
+  const drawnLefts =
+    mode === "even"
+      ? events.map((_, index) =>
+          events.length === 1 ? 50 : (index / (events.length - 1)) * 100
+        )
+      : distributeOffsets(rawLefts, minMarkerSpacing)
 
   let previousEpoch = firstTime
 
@@ -618,7 +850,7 @@ function graphEventsForTimeline(timeline: DeliveryTimeline): GraphEvent[] {
       label: compactEventType(event.event_type),
       detail: event.error ?? event.message,
       time: event.occurred_at,
-      left: distributedLefts[position],
+      left: drawnLefts[position],
       rawLeft: rawLefts[position],
       epoch: time,
       offsetSeconds: (time - firstTime) / 1000,
@@ -628,36 +860,23 @@ function graphEventsForTimeline(timeline: DeliveryTimeline): GraphEvent[] {
   })
 }
 
-/**
- * Spread positions so no two are closer than `minGap` (in % of track),
- * while preserving order and staying within [0, 100]. This keeps the
- * timeline roughly time-proportional but prevents clustered markers from
- * overlapping into an unreadable smear.
- */
 function distributeOffsets(positions: number[], minGap: number): number[] {
   if (positions.length <= 1) return positions.slice()
 
   const result = positions.slice()
 
-  // Forward pass: push markers right so each is >= previous + minGap.
   for (let index = 1; index < result.length; index += 1) {
     const minAllowed = result[index - 1] + minGap
-    if (result[index] < minAllowed) {
-      result[index] = minAllowed
-    }
+    if (result[index] < minAllowed) result[index] = minAllowed
   }
 
-  // If we overflowed past 100, do a backward pass to pull everything in.
   const overflow = result[result.length - 1] - 100
   if (overflow > 0) {
     result[result.length - 1] = 100
     for (let index = result.length - 2; index >= 0; index -= 1) {
       const maxAllowed = result[index + 1] - minGap
-      if (result[index] > maxAllowed) {
-        result[index] = maxAllowed
-      }
+      if (result[index] > maxAllowed) result[index] = maxAllowed
     }
-    // Clamp any leading negatives back to 0.
     result[0] = Math.max(0, result[0])
   }
 
@@ -728,10 +947,25 @@ function RecordDetail({
   )
 }
 
-function stagesForTimeline(timeline: DeliveryTimeline): Stage[] {
+function stagesForTimeline(
+  timeline: DeliveryTimeline,
+  attempt: CallAttempt
+): Stage[] {
   const delivery = timeline.delivery
   const call = timeline.simulator_call
-  const events = timeline.simulator_events
+  const events = attempt.events
+
+  const incomingTime =
+    call?.incoming_call_time ?? eventTime(events, "IncomingCall")
+  const connectedTime =
+    call?.call_connected_time ?? eventTime(events, "CallConnected")
+  const playStartedTime =
+    call?.play_started_time ?? eventTime(events, "PlayStarted")
+  const playCompletedTime =
+    call?.play_completed_time ??
+    call?.call_disconnected_time ??
+    eventTime(events, "PlayCompleted") ??
+    eventTime(events, "CallDisconnected")
 
   return [
     {
@@ -751,20 +985,18 @@ function stagesForTimeline(timeline: DeliveryTimeline): Stage[] {
     },
     {
       label: "Incoming",
-      state: call || hasEvent(events, "IncomingCall") ? "complete" : "waiting",
-      detail: call?.state ?? "waiting for ACS",
-      time: call?.incoming_call_time ?? eventTime(events, "IncomingCall"),
+      state:
+        call || incomingTime || connectedTime ? "complete" : "waiting",
+      detail: call?.state ?? (connectedTime ? "connected" : "waiting for ACS"),
+      time: incomingTime ?? connectedTime,
       icon: <PhoneIncomingIcon className="size-3.5" />,
     },
     {
       label: "Playback",
-      state: playbackStageState(timeline),
-      detail: playbackDetail(timeline),
-      time:
-        call?.play_completed_time ??
-        call?.call_disconnected_time ??
-        eventTime(events, "PlayCompleted"),
-      icon: playbackIcon(playbackStageState(timeline)),
+      state: playbackStageState(timeline, attempt),
+      detail: playbackDetail(timeline, attempt),
+      time: playCompletedTime ?? playStartedTime,
+      icon: playbackIcon(playbackStageState(timeline, attempt)),
     },
   ]
 }
@@ -774,18 +1006,21 @@ function deliveryStageState(
   result: string | null
 ): StageState {
   const value = `${status ?? ""} ${result ?? ""}`.toLowerCase()
-  if (/(fail|error|reject|busy|abandon|no.?answer)/.test(value)) {
+  if (/(fail|error|reject|busy|abandon|no.?answer|expired)/.test(value)) {
     return "failed"
   }
-  if (/(complete|success|sent|delivered|finished)/.test(value)) {
+  if (/(complete|success|sent|delivered|finished|liveanswer)/.test(value)) {
     return "complete"
   }
   return "active"
 }
 
-function playbackStageState(timeline: DeliveryTimeline): StageState {
+function playbackStageState(
+  timeline: DeliveryTimeline,
+  attempt: CallAttempt
+): StageState {
   const call = timeline.simulator_call
-  const events = timeline.simulator_events
+  const events = attempt.events
   if (call?.error || events.some((event) => event.error)) return "failed"
   if (call?.play_completed_time || hasEvent(events, "PlayCompleted")) {
     return "complete"
@@ -793,23 +1028,35 @@ function playbackStageState(timeline: DeliveryTimeline): StageState {
   if (call?.state === "playing" || call?.state === "waiting_after_play") {
     return "active"
   }
-  if (
-    call &&
-    ["busy", "disabled", "failed", "no_answer"].includes(call.state)
-  ) {
+  if (call && ["busy", "disabled", "failed", "no_answer"].includes(call.state)) {
     return "failed"
   }
+  // Event-derived completion when no simulator_call is attached.
+  if (hasEvent(events, "CallDisconnected") && hasEvent(events, "PlayStarted")) {
+    return "complete"
+  }
+  if (hasEvent(events, "PlayStarted")) return "active"
   if (call?.call_disconnected_time) return "complete"
   return "waiting"
 }
 
-function playbackDetail(timeline: DeliveryTimeline): string {
+function playbackDetail(
+  timeline: DeliveryTimeline,
+  attempt: CallAttempt
+): string {
   const call = timeline.simulator_call
-  if (!call) return "waiting for answer"
-  if (call.error) return call.error
-  if (call.play_completed_time) return "TTS completed"
-  if (call.state === "playing") return "TTS playing"
-  return call.result ?? call.current_action ?? call.state
+  const events = attempt.events
+  if (call?.error) return call.error
+  const failed = events.find((event) => event.error)
+  if (failed?.error) return failed.error
+  if (call?.play_completed_time || hasEvent(events, "PlayCompleted")) {
+    return "TTS completed"
+  }
+  if (call?.state === "playing" || hasEvent(events, "PlayStarted")) {
+    return hasEvent(events, "CallDisconnected") ? "TTS played" : "TTS playing"
+  }
+  if (!call && !events.length) return "waiting for answer"
+  return call?.result ?? call?.current_action ?? call?.state ?? "completed"
 }
 
 function playbackIcon(state: StageState) {
@@ -832,14 +1079,11 @@ function stageTone(state: StageState): string {
   return "border-border bg-input/30 text-muted-foreground"
 }
 
-function hasEvent(events: DeliveryTimeline["simulator_events"], type: string) {
+function hasEvent(events: CallEvent[], type: string) {
   return events.some((event) => event.event_type === type)
 }
 
-function eventTime(
-  events: DeliveryTimeline["simulator_events"],
-  type: string
-): string | null {
+function eventTime(events: CallEvent[], type: string): string | null {
   return events.find((event) => event.event_type === type)?.occurred_at ?? null
 }
 
@@ -847,10 +1091,6 @@ function eventTime(
 /* Diagnostics                                                                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Enable verbose timeline logging by adding `?debugTimeline` (or
- * `?debugTimeline=1`) to the monitor URL. Returns false during SSR.
- */
 function timelineDebugEnabled(): boolean {
   if (typeof window === "undefined") return false
   try {
@@ -860,24 +1100,16 @@ function timelineDebugEnabled(): boolean {
   }
 }
 
-/**
- * Emit a structured, copy-pasteable dump of everything that drives the
- * timeline visualization for a single delivery: the delivery record's key
- * timestamps, the derived stages, and the fully-resolved graph events
- * (absolute time, relative offset, inter-event gap, and computed position).
- *
- * Paste the resulting `[DeliveryTimeline] <id>` group back so the data can
- * be inspected.
- */
 function logTimelineDiagnostics(
   timeline: DeliveryTimeline,
+  attempt: CallAttempt,
   graphEvents: GraphEvent[]
 ): void {
   const delivery = timeline.delivery
-  const call = timeline.simulator_call
+  const droppedCount = timeline.simulator_events.length - attempt.events.length
 
   console.groupCollapsed(
-    `%c[DeliveryTimeline] ${timeline.id} · ${graphEvents.length} graph events · ${timeline.correlation}`,
+    `%c[DeliveryTimeline] ${timeline.id} · ${graphEvents.length}/${timeline.simulator_events.length} events graphed · ${timeline.correlation}`,
     "color:#0ea5e9;font-weight:600"
   )
 
@@ -886,8 +1118,9 @@ function logTimelineDiagnostics(
     correlation: timeline.correlation,
     to_number: timeline.to_number,
     contact_id: timeline.contact_id,
-    has_simulator_call: Boolean(call),
-    simulator_event_count: timeline.simulator_events.length,
+    chosen_attempt_context: attempt.contextKey,
+    total_attempts: attemptCount(timeline),
+    dropped_events: droppedCount,
     graph_event_count: graphEvents.length,
     total_duration_seconds:
       graphEvents.length > 1
@@ -907,28 +1140,23 @@ function logTimelineDiagnostics(
     modified_on: delivery.modified_on,
   })
 
-  if (call) {
-    console.log("Simulator call timestamps", {
-      state: call.state,
-      scenario_name: call.scenario_name,
-      current_action: call.current_action,
-      incoming_call_time: call.incoming_call_time,
-      answer_time: call.answer_time,
-      call_connected_time: call.call_connected_time,
-      play_started_time: call.play_started_time,
-      play_completed_time: call.play_completed_time,
-      hangup_time: call.hangup_time,
-      call_disconnected_time: call.call_disconnected_time,
-      result: call.result,
-      error: call.error,
-    })
-  } else {
-    console.log("Simulator call: <none matched>")
+  if (droppedCount > 0) {
+    const chosenKeys = new Set(attempt.events.map((event) => event.occurred_at))
+    console.log(
+      "Dropped events (other attempts / outliers)",
+      timeline.simulator_events
+        .filter((event) => !chosenKeys.has(event.occurred_at))
+        .map((event) => ({
+          event_type: event.event_type,
+          occurred_at: event.occurred_at,
+          operation_context: event.operation_context,
+        }))
+    )
   }
 
   console.log("Derived stages")
   console.table(
-    stagesForTimeline(timeline).map((stage) => ({
+    stagesForTimeline(timeline, attempt).map((stage) => ({
       label: stage.label,
       state: stage.state,
       detail: stage.detail,
@@ -937,7 +1165,7 @@ function logTimelineDiagnostics(
   )
 
   if (graphEvents.length) {
-    console.log("Graph events (chronological)")
+    console.log("Graph events (chronological, proportional positions)")
     console.table(
       graphEvents.map((event) => ({
         label: event.label,
@@ -950,26 +1178,9 @@ function logTimelineDiagnostics(
         detail: event.detail,
       }))
     )
-
-    // Highlight clustering: how many markers were nudged from their raw spot.
-    const nudged = graphEvents.filter(
-      (event) => Math.abs(event.left - event.rawLeft) > 0.5
-    )
-    if (nudged.length) {
-      console.log(
-        `Position adjustments: ${nudged.length}/${graphEvents.length} markers were spaced out to avoid overlap.`,
-        nudged.map((event) => ({
-          label: event.label,
-          raw: round(event.rawLeft),
-          drawn: round(event.left),
-        }))
-      )
-    }
-  } else {
-    console.log("Graph events: <none — no parseable simulator event times>")
   }
 
-  console.log("Raw simulator_events", timeline.simulator_events)
+  console.log("Chosen attempt events (raw)", attempt.events)
   console.groupEnd()
 }
 
@@ -981,10 +1192,6 @@ function round(value: number): number {
 /* Formatting                                                                 */
 /* -------------------------------------------------------------------------- */
 
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : ""
-}
-
 function formatTime(value: string | null) {
   return value
     ? new Date(value).toLocaleTimeString([], {
@@ -995,7 +1202,6 @@ function formatTime(value: string | null) {
     : ""
 }
 
-/** Compact duration: `0.8s`, `4.2s`, `1m 03s`. */
 function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0s"
   if (seconds < 60) {

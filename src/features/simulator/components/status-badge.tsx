@@ -21,14 +21,57 @@ export function StatusBadge({
 }
 
 export function statusToneClass(value: string): string {
-  if (["connected", "playing", "reachable"].includes(value)) {
+  const normalized = value.toLowerCase().replace(/[\s_]+/g, "")
+
+  if (successTones.has(normalized)) {
     return "border-success/35 bg-success/10 text-success"
   }
-  if (["answering", "waiting_after_play", "busy", "incoming"].includes(value)) {
+  if (warningTones.has(normalized)) {
     return "border-warning/35 bg-warning/10 text-warning"
   }
-  if (["failed", "no_answer", "disabled"].includes(value)) {
+  if (destructiveTones.has(normalized)) {
     return "border-destructive/35 bg-destructive/10 text-destructive"
   }
   return "border-border bg-input/30 text-foreground"
 }
+
+const successTones = new Set([
+  // call states
+  "connected",
+  "playing",
+  "reachable",
+  // proactive results / statuses
+  "complete",
+  "completed",
+  "liveanswer",
+  "delivered",
+  "sent",
+  "success",
+])
+
+const warningTones = new Set([
+  // call states
+  "answering",
+  "waitingafterplay",
+  "busy",
+  "incoming",
+  // proactive results / statuses
+  "pending",
+  "queued",
+  "inprogress",
+  "answeringmachine",
+  "voicemail",
+])
+
+const destructiveTones = new Set([
+  // call states
+  "failed",
+  "noanswer",
+  "disabled",
+  // proactive results / statuses
+  "callfailed",
+  "expired",
+  "rejected",
+  "error",
+  "abandoned",
+])
