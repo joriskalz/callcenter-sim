@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS deps
+FROM node:22.23.4-bookworm-slim AS deps
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -10,7 +10,7 @@ RUN corepack enable && corepack prepare pnpm@10.8.1 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM node:22-bookworm-slim AS builder
+FROM node:22.23.4-bookworm-slim AS builder
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -24,7 +24,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build
 
-FROM node:22-bookworm-slim AS runner
+FROM node:22.23.4-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0

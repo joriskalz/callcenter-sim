@@ -9,26 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as MonitorRouteImport } from './routes/monitor'
-import { Route as HealthRouteImport } from './routes/health'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiStatusRouteImport } from './routes/api/status'
-import { Route as ApiSetupRouteImport } from './routes/api/setup'
-import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
-import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
-import { Route as ApiContactsRouteImport } from './routes/api/contacts'
+import { Route as HealthRouteImport } from './routes/health'
+import { Route as MonitorRouteImport } from './routes/monitor'
 import { Route as ApiCallbacksRouteImport } from './routes/api/callbacks'
-import { Route as ApiProactiveEngagementDeliveriesRouteImport } from './routes/api/proactive-engagement/deliveries'
-import { Route as ApiProactiveEngagementConfigsRouteImport } from './routes/api/proactive-engagement/configs'
+import { Route as ApiContactsRouteImport } from './routes/api/contacts'
+import { Route as ApiIncomingCallRouteImport } from './routes/api/incomingCall'
+import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
+import { Route as ApiSetupRouteImport } from './routes/api/setup'
+import { Route as ApiStatusRouteImport } from './routes/api/status'
 import { Route as ApiContactsAddressRouteImport } from './routes/api/contacts/address'
-import { Route as ApiMediaVoicemailToneWavRouteImport } from './routes/api/media/voicemail-tone.wav'
-import { Route as ApiContactsContactIdSimulatorStatusRouteImport } from './routes/api/contacts/$contactId/simulator-status'
-import { Route as ApiContactsContactIdConsentRouteImport } from './routes/api/contacts/$contactId/consent'
+import { Route as ApiProactiveEngagementConfigsRouteImport } from './routes/api/proactive-engagement/configs'
+import { Route as ApiProactiveEngagementDeliveriesRouteImport } from './routes/api/proactive-engagement/deliveries'
 import { Route as ApiContactsContactIdAddressRouteImport } from './routes/api/contacts/$contactId/address'
+import { Route as ApiContactsContactIdConsentRouteImport } from './routes/api/contacts/$contactId/consent'
+import { Route as ApiContactsContactIdSimulatorStatusRouteImport } from './routes/api/contacts/$contactId/simulator-status'
+import { Route as ApiMediaVoicemailToneWavRouteImport } from './routes/api/media/voicemail-tone.wav'
 
-const MonitorRoute = MonitorRouteImport.update({
-  id: '/monitor',
-  path: '/monitor',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HealthRoute = HealthRouteImport.update({
@@ -36,34 +36,9 @@ const HealthRoute = HealthRouteImport.update({
   path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiStatusRoute = ApiStatusRouteImport.update({
-  id: '/api/status',
-  path: '/api/status',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSetupRoute = ApiSetupRouteImport.update({
-  id: '/api/setup',
-  path: '/api/setup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiScenariosRoute = ApiScenariosRouteImport.update({
-  id: '/api/scenarios',
-  path: '/api/scenarios',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiIncomingCallRoute = ApiIncomingCallRouteImport.update({
-  id: '/api/incomingCall',
-  path: '/api/incomingCall',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiContactsRoute = ApiContactsRouteImport.update({
-  id: '/api/contacts',
-  path: '/api/contacts',
+const MonitorRoute = MonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCallbacksRoute = ApiCallbacksRouteImport.update({
@@ -71,33 +46,52 @@ const ApiCallbacksRoute = ApiCallbacksRouteImport.update({
   path: '/api/callbacks',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiProactiveEngagementDeliveriesRoute =
-  ApiProactiveEngagementDeliveriesRouteImport.update({
-    id: '/api/proactive-engagement/deliveries',
-    path: '/api/proactive-engagement/deliveries',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const ApiContactsRoute = ApiContactsRouteImport.update({
+  id: '/api/contacts',
+  path: '/api/contacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIncomingCallRoute = ApiIncomingCallRouteImport.update({
+  id: '/api/incomingCall',
+  path: '/api/incomingCall',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScenariosRoute = ApiScenariosRouteImport.update({
+  id: '/api/scenarios',
+  path: '/api/scenarios',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSetupRoute = ApiSetupRouteImport.update({
+  id: '/api/setup',
+  path: '/api/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatusRoute = ApiStatusRouteImport.update({
+  id: '/api/status',
+  path: '/api/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiContactsAddressRoute = ApiContactsAddressRouteImport.update({
+  id: '/address',
+  path: '/address',
+  getParentRoute: () => ApiContactsRoute,
+} as any)
 const ApiProactiveEngagementConfigsRoute =
   ApiProactiveEngagementConfigsRouteImport.update({
     id: '/api/proactive-engagement/configs',
     path: '/api/proactive-engagement/configs',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiContactsAddressRoute = ApiContactsAddressRouteImport.update({
-  id: '/address',
-  path: '/address',
-  getParentRoute: () => ApiContactsRoute,
-} as any)
-const ApiMediaVoicemailToneWavRoute =
-  ApiMediaVoicemailToneWavRouteImport.update({
-    id: '/api/media/voicemail-tone/wav',
-    path: '/api/media/voicemail-tone/wav',
+const ApiProactiveEngagementDeliveriesRoute =
+  ApiProactiveEngagementDeliveriesRouteImport.update({
+    id: '/api/proactive-engagement/deliveries',
+    path: '/api/proactive-engagement/deliveries',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiContactsContactIdSimulatorStatusRoute =
-  ApiContactsContactIdSimulatorStatusRouteImport.update({
-    id: '/$contactId/simulator-status',
-    path: '/$contactId/simulator-status',
+const ApiContactsContactIdAddressRoute =
+  ApiContactsContactIdAddressRouteImport.update({
+    id: '/$contactId/address',
+    path: '/$contactId/address',
     getParentRoute: () => ApiContactsRoute,
   } as any)
 const ApiContactsContactIdConsentRoute =
@@ -106,11 +100,17 @@ const ApiContactsContactIdConsentRoute =
     path: '/$contactId/consent',
     getParentRoute: () => ApiContactsRoute,
   } as any)
-const ApiContactsContactIdAddressRoute =
-  ApiContactsContactIdAddressRouteImport.update({
-    id: '/$contactId/address',
-    path: '/$contactId/address',
+const ApiContactsContactIdSimulatorStatusRoute =
+  ApiContactsContactIdSimulatorStatusRouteImport.update({
+    id: '/$contactId/simulator-status',
+    path: '/$contactId/simulator-status',
     getParentRoute: () => ApiContactsRoute,
+  } as any)
+const ApiMediaVoicemailToneWavRoute =
+  ApiMediaVoicemailToneWavRouteImport.update({
+    id: '/api/media/voicemail-tone/wav',
+    path: '/api/media/voicemail-tone/wav',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -242,11 +242,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/monitor': {
-      id: '/monitor'
-      path: '/monitor'
-      fullPath: '/monitor'
-      preLoaderRoute: typeof MonitorRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/health': {
@@ -256,46 +256,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/status': {
-      id: '/api/status'
-      path: '/api/status'
-      fullPath: '/api/status'
-      preLoaderRoute: typeof ApiStatusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/setup': {
-      id: '/api/setup'
-      path: '/api/setup'
-      fullPath: '/api/setup'
-      preLoaderRoute: typeof ApiSetupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scenarios': {
-      id: '/api/scenarios'
-      path: '/api/scenarios'
-      fullPath: '/api/scenarios'
-      preLoaderRoute: typeof ApiScenariosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/incomingCall': {
-      id: '/api/incomingCall'
-      path: '/api/incomingCall'
-      fullPath: '/api/incomingCall'
-      preLoaderRoute: typeof ApiIncomingCallRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/contacts': {
-      id: '/api/contacts'
-      path: '/api/contacts'
-      fullPath: '/api/contacts'
-      preLoaderRoute: typeof ApiContactsRouteImport
+    '/monitor': {
+      id: '/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof MonitorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/callbacks': {
@@ -305,18 +270,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCallbacksRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/proactive-engagement/deliveries': {
-      id: '/api/proactive-engagement/deliveries'
-      path: '/api/proactive-engagement/deliveries'
-      fullPath: '/api/proactive-engagement/deliveries'
-      preLoaderRoute: typeof ApiProactiveEngagementDeliveriesRouteImport
+    '/api/contacts': {
+      id: '/api/contacts'
+      path: '/api/contacts'
+      fullPath: '/api/contacts'
+      preLoaderRoute: typeof ApiContactsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/proactive-engagement/configs': {
-      id: '/api/proactive-engagement/configs'
-      path: '/api/proactive-engagement/configs'
-      fullPath: '/api/proactive-engagement/configs'
-      preLoaderRoute: typeof ApiProactiveEngagementConfigsRouteImport
+    '/api/incomingCall': {
+      id: '/api/incomingCall'
+      path: '/api/incomingCall'
+      fullPath: '/api/incomingCall'
+      preLoaderRoute: typeof ApiIncomingCallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scenarios': {
+      id: '/api/scenarios'
+      path: '/api/scenarios'
+      fullPath: '/api/scenarios'
+      preLoaderRoute: typeof ApiScenariosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/setup': {
+      id: '/api/setup'
+      path: '/api/setup'
+      fullPath: '/api/setup'
+      preLoaderRoute: typeof ApiSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/status': {
+      id: '/api/status'
+      path: '/api/status'
+      fullPath: '/api/status'
+      preLoaderRoute: typeof ApiStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/contacts/address': {
@@ -326,18 +312,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsAddressRouteImport
       parentRoute: typeof ApiContactsRoute
     }
-    '/api/media/voicemail-tone/wav': {
-      id: '/api/media/voicemail-tone/wav'
-      path: '/api/media/voicemail-tone/wav'
-      fullPath: '/api/media/voicemail-tone/wav'
-      preLoaderRoute: typeof ApiMediaVoicemailToneWavRouteImport
+    '/api/proactive-engagement/configs': {
+      id: '/api/proactive-engagement/configs'
+      path: '/api/proactive-engagement/configs'
+      fullPath: '/api/proactive-engagement/configs'
+      preLoaderRoute: typeof ApiProactiveEngagementConfigsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/contacts/$contactId/simulator-status': {
-      id: '/api/contacts/$contactId/simulator-status'
-      path: '/$contactId/simulator-status'
-      fullPath: '/api/contacts/$contactId/simulator-status'
-      preLoaderRoute: typeof ApiContactsContactIdSimulatorStatusRouteImport
+    '/api/proactive-engagement/deliveries': {
+      id: '/api/proactive-engagement/deliveries'
+      path: '/api/proactive-engagement/deliveries'
+      fullPath: '/api/proactive-engagement/deliveries'
+      preLoaderRoute: typeof ApiProactiveEngagementDeliveriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/contacts/$contactId/address': {
+      id: '/api/contacts/$contactId/address'
+      path: '/$contactId/address'
+      fullPath: '/api/contacts/$contactId/address'
+      preLoaderRoute: typeof ApiContactsContactIdAddressRouteImport
       parentRoute: typeof ApiContactsRoute
     }
     '/api/contacts/$contactId/consent': {
@@ -347,12 +340,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsContactIdConsentRouteImport
       parentRoute: typeof ApiContactsRoute
     }
-    '/api/contacts/$contactId/address': {
-      id: '/api/contacts/$contactId/address'
-      path: '/$contactId/address'
-      fullPath: '/api/contacts/$contactId/address'
-      preLoaderRoute: typeof ApiContactsContactIdAddressRouteImport
+    '/api/contacts/$contactId/simulator-status': {
+      id: '/api/contacts/$contactId/simulator-status'
+      path: '/$contactId/simulator-status'
+      fullPath: '/api/contacts/$contactId/simulator-status'
+      preLoaderRoute: typeof ApiContactsContactIdSimulatorStatusRouteImport
       parentRoute: typeof ApiContactsRoute
+    }
+    '/api/media/voicemail-tone/wav': {
+      id: '/api/media/voicemail-tone/wav'
+      path: '/api/media/voicemail-tone/wav'
+      fullPath: '/api/media/voicemail-tone/wav'
+      preLoaderRoute: typeof ApiMediaVoicemailToneWavRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
